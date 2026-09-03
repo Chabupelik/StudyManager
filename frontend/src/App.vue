@@ -3,7 +3,7 @@ import { onMounted, watch } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { useUiStore } from './stores/ui';
 import { useWsStore } from './stores/ws';
-import { tg } from './utils/telegram';
+import { appBridge } from './utils/bridge';
 
 import TabBar from './components/layout/TabBar.vue';
 import Toast from './components/common/Toast.vue';
@@ -27,25 +27,18 @@ onMounted(async () => {
   await authStore.init();
   wsStore.connect();
 
-  // Telegram BackButton handler
-  if (tg?.isVersionAtLeast?.('6.1')) {
-    tg.BackButton.onClick(() => {
-      uiStore.goBack();
-    });
-  }
+  // Кнопка «Назад» (TG показывает нативную, VK — no-op)
+  appBridge.showBackButton(false, () => {
+    uiStore.goBack();
+  });
 });
 
-// Update Telegram BackButton visibility on active screen change
+// Update BackButton visibility on active screen change
 watch(
   () => uiStore.activeScreen,
   (screen) => {
-    if (tg?.isVersionAtLeast?.('6.1')) {
-      if (screen === 'details' || screen === 'student-absences') {
-        tg.BackButton.show();
-      } else {
-        tg.BackButton.hide();
-      }
-    }
+    const shouldShow = screen === 'details' || screen === 'student-absences';
+    appBridge.showBackButton(shouldShow);
   }
 );
 </script>

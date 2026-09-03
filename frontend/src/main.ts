@@ -1,14 +1,13 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
-import { tg } from './utils/telegram';
+import { appBridge } from './utils/bridge';
+import { detectPlatform } from './utils/platform';
 import './style.css';
 
-// Sync Telegram theme with HTML root class
-function applyTelegramTheme() {
-  const isDark =
-    tg?.colorScheme === 'dark' ||
-    (!tg?.colorScheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+// Sync theme with HTML root class
+function applyTheme() {
+  const isDark = appBridge.getColorScheme() === 'dark';
 
   if (isDark) {
     document.documentElement.classList.add('dark');
@@ -17,10 +16,14 @@ function applyTelegramTheme() {
   }
 }
 
-applyTelegramTheme();
-try {
-  tg?.onEvent?.('themeChanged', applyTelegramTheme);
-} catch {}
+applyTheme();
+
+// Подписка на изменение темы (только TG поддерживает событие)
+if (detectPlatform() === 'telegram') {
+  try {
+    (window as any).Telegram?.WebApp?.onEvent?.('themeChanged', applyTheme);
+  } catch {}
+}
 
 const app = createApp(App);
 const pinia = createPinia();

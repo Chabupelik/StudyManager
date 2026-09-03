@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { tg } from '../utils/telegram';
+import { appBridge } from '../utils/bridge';
 import { useScheduleStore } from './schedule';
 import { useAttendanceStore } from './attendance';
 import { useDutyStore } from './duties';
@@ -23,9 +23,10 @@ export const useWsStore = defineStore('ws', () => {
 
       socket.onopen = () => {
         isConnected.value = true;
-        // Send initData immediately on open
-        if (socket && tg.initData) {
-          socket.send(tg.initData);
+        // Отправляем auth payload (TG initData или VK query-строка)
+        const payload = appBridge.getWsAuthPayload();
+        if (socket && payload) {
+          socket.send(payload);
         }
       };
 

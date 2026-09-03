@@ -1,4 +1,4 @@
-import { tg } from '../utils/telegram';
+import { appBridge } from '../utils/bridge';
 
 export interface ApiOptions {
   method?: string;
@@ -27,12 +27,12 @@ export class ApiClient {
       ...(options.headers || {}),
     };
 
-    // 1. Telegram initData header
-    if (tg.initData) {
-      headers['X-Telegram-Init-Data'] = tg.initData;
-    }
+    // Auth header: X-Telegram-Init-Data (TG) или X-VK-Sign (VK)
+    const authHeaders = appBridge.getAuthHeaders();
+    Object.assign(headers, authHeaders);
 
-    // 2. JWT Bearer header for web users
+    // JWT Bearer для PC-входа
+
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }

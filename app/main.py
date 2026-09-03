@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi import Header
 from app.api.v1 import admin, attendance, auth, duties, schedule, stats
 from app.core.config import get_settings
-from app.core.security import validate_tg_init_data
+from app.core.security import validate_tg_init_data, validate_vk_sign
+from app.data.students_data import STAFF, STUDENTS
 from app.db.database import async_session_maker, engine
 from app.services.audit_service import log_action
 from app.services.user_service import UserContext, get_display_name, load_student_cache
@@ -116,24 +117,38 @@ def create_app() -> FastAPI:
         await manager.connect(websocket)
         try:
             auth_data = await websocket.receive_text()
+            settings = get_settings()
+
+            # Попытка 1: TG initData
             tg_user = validate_tg_init_data(auth_data)
-
-            if not tg_user:
-                async with async_session_maker() as session:
-                    await log_action(
-                        session,
-                        "System",
-                        "WS Auth Failed",
-                        f"IP: {ip}, Agent: {user_agent}",
+            if tg_user and tg_user.get("id"):
+                ctx = UserContext(
+                    id=int(tg_user["id"]),
+                    first_name=tg_user.get("first_name", ""),
+                )
+            else:
+                # Попытка 2: VK query-строка
+                vk_params = validate_vk_sign(auth_data, settings.vk_protected_key)
+                person = None
+                if vk_params and "vk_user_id" in vk_params:
+                    vk_user_id = int(vk_params["vk_user_id"])
+                    person = next(
+                        (p for p in STUDENTS + STAFF if p.get("vk_id") == vk_user_id), None
                     )
-                await websocket.close(code=1008)
-                return
-
-            user_id = int(tg_user["id"])
-            ctx = UserContext(
-                id=user_id,
-                first_name=tg_user.get("first_name", ""),
-            )
+                if not person:
+                    async with async_session_maker() as session:
+                        await log_action(
+                            session,
+                            "System",
+                            "WS Auth Failed",
+                            f"IP: {ip}, Agent: {user_agent}",
+                        )
+                    await websocket.close(code=4003)
+                    return
+                ctx = UserContext(
+                    id=person["tg_id"],
+                    first_name=person["name"].split()[1] if len(person["name"].split()) > 1 else person["name"],
+                )
             user_name = get_display_name(ctx)
 
             async with async_session_maker() as session:

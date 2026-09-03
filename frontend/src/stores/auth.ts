@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { ApiClient } from '../api/client';
-import { tg } from '../utils/telegram';
+import { detectPlatform } from '../utils/platform';
 
 export type UserRole = 'viewer' | 'admin' | 'super';
 
@@ -16,11 +16,11 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => effectiveRole.value === 'admin' || effectiveRole.value === 'super');
   const isSuperAdmin = computed(() => effectiveRole.value === 'super' || (user.value?.id === 620159705));
   const isDeveloper = computed(() => user.value?.id === 620159705 || myTgId.value === 620159705);
-  const myTgId = computed(() => user.value?.id || tg.initDataUnsafe?.user?.id || 0);
+  const myTgId = computed(() => user.value?.id || 0);
 
   async function init() {
-    // If running in regular browser without TG WebApp and no JWT token, show PC login modal
-    if (!tg.initData && !ApiClient.getToken()) {
+    // PC-модалка только если нет TG и нет VK параметров
+    if (detectPlatform() === 'web' && !ApiClient.getToken()) {
       showPcLoginModal.value = true;
       return;
     }

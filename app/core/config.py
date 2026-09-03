@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     vk_group_id: int = 0
     vk_chat_peer_id: int = 0
     vk_api_version: str = "5.199"
+    vk_protected_key: str = ""  # Защищённый ключ из настроек VK Mini App (dev.vk.com)
 
     admin_ids: str = ""
     developer_id: int = 620159705

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
 import time
 from datetime import UTC, datetime, timedelta
-from urllib.parse import parse_qsl, unquote_plus
+from urllib.parse import parse_qsl, unquote_plus, urlencode
 
 import jwt
 
@@ -47,6 +48,39 @@ def validate_tg_init_data(init_data: str) -> dict | None:
             return None
 
         return json.loads(parsed.get("user", "{}"))
+    except Exception:
+        return None
+
+
+def validate_vk_sign(query_string: str, protected_key: str) -> dict | None:
+    """
+    Проверяет query-строку параметров запуска VK Mini App.
+    Спецификация: https://dev.vk.com/mini-apps/development/launch-params/sign
+
+    Возвращает словарь vk_* параметров при валидной подписи, None — при невалидной.
+    """
+    if not protected_key:
+        return None
+    try:
+        parsed = dict(parse_qsl(query_string, keep_blank_values=True))
+        client_sign = parsed.get("sign")
+        if not client_sign:
+            return None
+
+        # Только параметры с префиксом vk_
+        vk_params = {k: v for k, v in parsed.items() if k.startswith("vk_")}
+        sorted_query = urlencode(sorted(vk_params.items()))
+
+        computed_hash = hmac.new(
+            protected_key.encode("utf-8"),
+            sorted_query.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        expected_sign = base64.urlsafe_b64encode(computed_hash).decode("utf-8").rstrip("=")
+
+        if hmac.compare_digest(client_sign, expected_sign):
+            return vk_params
+        return None
     except Exception:
         return None
 
