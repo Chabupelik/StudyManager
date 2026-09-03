@@ -25,6 +25,9 @@ export interface PlatformBridge {
   /** Текущая цветовая схема */
   getColorScheme(): 'light' | 'dark';
 
+  /** Подписка на изменение темы (опционально) */
+  onThemeChange?(callback: () => void): void;
+
   /**
    * Управление кнопкой «Назад».
    * В VK — no-op (системный back/свайп).

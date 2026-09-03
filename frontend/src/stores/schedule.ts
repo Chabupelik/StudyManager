@@ -62,6 +62,22 @@ export const useScheduleStore = defineStore('schedule', () => {
     }
   }
 
+  /**
+   * Тихое обновление расписания — без включения loading-индикатора.
+   * Используется для WS-обновлений, чтобы данные обновились без мерцания UI.
+   */
+  async function refreshSilently() {
+    const key = dateKey.value;
+    const now = Date.now();
+    try {
+      const res = await ApiClient.get<ScheduleResponse>(`/api/schedule?date=${key}`);
+      lessons.value = res.lessons || [];
+      cache.set(key, { data: lessons.value, expires: now + CACHE_TTL });
+    } catch (e) {
+      console.error('Failed to refresh schedule silently', e);
+    }
+  }
+
   async function updateOverride(time: string, newName?: string | null, newTeacher?: string | null, isCanceled = 0) {
     await ApiClient.post('/api/override', {
       date: dateKey.value,
@@ -84,6 +100,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     changeMonth,
     invalidateCache,
     loadSchedule,
+    refreshSilently,
     updateOverride,
   };
 });

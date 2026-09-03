@@ -13,9 +13,29 @@ import type { PlatformBridge } from './types';
 // поэтому читаем её до первого router.push().
 const launchParams = window.location.search.slice(1);
 
+// Тема: читается из VKWebAppUpdateConfig (async). По умолчанию dark —
+// большинство пользователей VK на мобиле используют тёмную тему,
+// а на ПК мы подхватим реальную через событие после init.
+let _scheme: 'dark' | 'light' = 'dark';
+const _themeListeners: Array<() => void> = [];
+
+// Подписываемся на изменения темы от VK клиента
+bridge.subscribe((event) => {
+  if (event.detail.type === 'VKWebAppUpdateConfig') {
+    const data = event.detail.data as any;
+    const newScheme: 'dark' | 'light' =
+      data?.scheme === 'space_gray' || data?.scheme === 'vkcom_dark' ? 'dark' : 'light';
+    if (newScheme !== _scheme) {
+      _scheme = newScheme;
+      _themeListeners.forEach((cb) => cb());
+    }
+  }
+});
+
 export const vkBridge: PlatformBridge = {
   init() {
     try {
+      // VKWebAppInit триггерит отправку VKWebAppUpdateConfig с реальной темой
       bridge.send('VKWebAppInit');
     } catch {}
   },
@@ -42,9 +62,11 @@ export const vkBridge: PlatformBridge = {
   },
 
   getColorScheme() {
-    // VK не предоставляет синхронного API для схемы при инициализации.
-    // Используем prefers-color-scheme как фоллбек.
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return _scheme;
+  },
+
+  onThemeChange(callback: () => void) {
+    _themeListeners.push(callback);
   },
 
   showBackButton(_show, _callback) {

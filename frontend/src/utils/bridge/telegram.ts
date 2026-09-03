@@ -50,6 +50,12 @@ export const telegramBridge: PlatformBridge = {
     return tg?.colorScheme === 'dark' ? 'dark' : 'light';
   },
 
+  onThemeChange(callback) {
+    try {
+      tg?.onEvent?.('themeChanged', callback);
+    } catch {}
+  },
+
   showBackButton(show, callback) {
     try {
       if (!tg?.isVersionAtLeast?.('6.1')) return;

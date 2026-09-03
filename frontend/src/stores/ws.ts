@@ -74,7 +74,8 @@ export const useWsStore = defineStore('ws', () => {
         if (msgDate) {
           scheduleStore.invalidateCache(msgDate);
           if (scheduleStore.dateKey === msgDate) {
-            scheduleStore.loadSchedule();
+            // Тихое обновление — без loading-индикатора, без мерцания
+            scheduleStore.refreshSilently();
             if (attendanceStore.lessonTime) {
               attendanceStore.refreshDetailsSilently();
             }
