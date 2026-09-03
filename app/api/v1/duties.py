@@ -162,6 +162,6 @@ async def assign_duties(
 
 
 @router.post("/internal/broadcast_duties")
-async def broadcast_duties():
+async def broadcast_duties(_: UserContext = Depends(require_admin)):
     await manager.broadcast({"type": "update_duties"})
     return {"status": "ok"}

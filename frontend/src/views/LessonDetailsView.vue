@@ -158,7 +158,7 @@ function handleOpenReason(s: StudentAttendance) {
           <input
             v-model="renameName"
             type="text"
-            class="w-full p-3 rounded-xl bg-app-card-subtle border border-app-border text-app-text text-sm focus:ring-2 focus:ring-app-accent outline-none"
+            class="modal-input w-full p-3 rounded-xl border border-app-border text-sm focus:ring-2 focus:ring-app-accent outline-none"
           />
         </div>
 
@@ -167,7 +167,7 @@ function handleOpenReason(s: StudentAttendance) {
           <input
             v-model="renameTeacher"
             type="text"
-            class="w-full p-3 rounded-xl bg-app-card-subtle border border-app-border text-app-text text-sm focus:ring-2 focus:ring-app-accent outline-none"
+            class="modal-input w-full p-3 rounded-xl border border-app-border text-sm focus:ring-2 focus:ring-app-accent outline-none"
           />
         </div>
 
@@ -189,3 +189,15 @@ function handleOpenReason(s: StudentAttendance) {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+/* Force input colors inside modal regardless of Telegram theme injection */
+.modal-input {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.modal-input::placeholder {
+  color: #94a3b8 !important;
+}
+</style>
