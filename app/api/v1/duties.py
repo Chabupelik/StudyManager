@@ -97,7 +97,7 @@ async def get_duties(
             }
         )
 
-    result.sort(key=lambda x: (x["date"] is None, x["date"]))
+    result.sort(key=lambda x: (x["date"] is not None, x["date"] or ""))
     return DutiesResponse(duties=result)
 
 
