@@ -5,7 +5,11 @@ import time
 from fastapi import Depends, Header, HTTPException, Request
 
 from app.core.config import get_settings
-from app.core.security import decode_access_token, validate_tg_init_data, validate_vk_sign
+from app.core.security import (
+    decode_access_token,
+    validate_tg_init_data,
+    validate_vk_sign,
+)
 from app.data.students_data import STAFF, STUDENTS
 from app.services.user_service import UserContext
 
@@ -41,6 +45,7 @@ async def get_current_user(
                 id=int(user_dict["id"]),
                 first_name=user_dict.get("first_name", ""),
                 username=user_dict.get("username"),
+                platform="telegram",
             )
         raise HTTPException(status_code=401, detail="Invalid Telegram initData")
 
@@ -62,8 +67,11 @@ async def get_current_user(
             # Возвращаем UserContext с tg_id — аватарки и вся бизнес-логика работают без изменений
             return UserContext(
                 id=person["tg_id"],
-                first_name=person["name"].split()[1] if len(person["name"].split()) > 1 else person["name"],
+                first_name=person["name"].split()[1]
+                if len(person["name"].split()) > 1
+                else person["name"],
                 username=None,
+                platform="vk",
             )
         raise HTTPException(status_code=401, detail="Invalid VK sign")
 
@@ -73,7 +81,7 @@ async def get_current_user(
         payload = decode_access_token(token)
         if payload and (sub := payload.get("sub")):
             try:
-                return UserContext(id=int(sub))
+                return UserContext(id=int(sub), platform="web")
             except ValueError:
                 pass
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -96,7 +104,9 @@ async def require_developer(
     return user
 
 
-async def get_request_details(request: Request) -> dict:
+async def get_request_details(
+    request: Request, user: UserContext = Depends(get_current_user)
+) -> dict:
     ip = request.headers.get("x-forwarded-for")
     if ip:
         ip = ip.split(",")[0].strip()
@@ -105,4 +115,5 @@ async def get_request_details(request: Request) -> dict:
     return {
         "ip": ip,
         "user_agent": request.headers.get("user-agent", "N/A"),
+        "platform": user.platform,
     }

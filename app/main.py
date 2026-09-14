@@ -4,11 +4,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from fastapi import Header
 from app.api.v1 import admin, attendance, auth, duties, schedule, stats
 from app.core.config import get_settings
 from app.core.security import validate_tg_init_data, validate_vk_sign
@@ -125,6 +124,7 @@ def create_app() -> FastAPI:
                 ctx = UserContext(
                     id=int(tg_user["id"]),
                     first_name=tg_user.get("first_name", ""),
+                    platform="telegram",
                 )
             else:
                 # Попытка 2: VK query-строка
@@ -133,7 +133,8 @@ def create_app() -> FastAPI:
                 if vk_params and "vk_user_id" in vk_params:
                     vk_user_id = int(vk_params["vk_user_id"])
                     person = next(
-                        (p for p in STUDENTS + STAFF if p.get("vk_id") == vk_user_id), None
+                        (p for p in STUDENTS + STAFF if p.get("vk_id") == vk_user_id),
+                        None,
                     )
                 if not person:
                     async with async_session_maker() as session:
@@ -147,13 +148,19 @@ def create_app() -> FastAPI:
                     return
                 ctx = UserContext(
                     id=person["tg_id"],
-                    first_name=person["name"].split()[1] if len(person["name"].split()) > 1 else person["name"],
+                    first_name=person["name"].split()[1]
+                    if len(person["name"].split()) > 1
+                    else person["name"],
+                    platform="vk",
                 )
             user_name = get_display_name(ctx)
 
             async with async_session_maker() as session:
                 await log_action(
-                    session, user_name, "WS Connected", f"IP: {ip}, Agent: {user_agent}"
+                    session,
+                    user_name,
+                    "WS Connected",
+                    f"IP: {ip}, Platform: {ctx.platform}, Agent: {user_agent}",
                 )
 
             while True:
