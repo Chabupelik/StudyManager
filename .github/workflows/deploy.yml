@@ -104,6 +104,5 @@ jobs:
             set -e
             cd ~/StudyManager
             git fetch origin main
-            git clean -fd
             git reset --hard origin/main
             docker compose up -d --build

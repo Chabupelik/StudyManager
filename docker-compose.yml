@@ -20,7 +20,9 @@ services:
       retries: 10
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: studymanager_backend
     restart: unless-stopped
     env_file: .env
