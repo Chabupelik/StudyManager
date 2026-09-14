@@ -1,0 +1,49 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# Ruff / Mypy caches
+.ruff_cache/
+.mypy_cache/
+
+# Frontend (not needed in Docker image)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Git
+.git/
+.gitignore
+
+# CI
+.github/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+
+# Docs
+README.md
+
+# Migrations (optional - remove if needed in container)
+# migrations/
+
+# Data (mounted as volume anyway)
+data/
