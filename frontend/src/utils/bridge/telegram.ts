@@ -15,6 +15,9 @@ declare global {
 
 const tg = window.Telegram?.WebApp ?? null;
 
+// Храним текущий callback, чтобы снимать его перед перерегистрацией
+let _backCallback: (() => void) | null = null;
+
 export const telegramBridge: PlatformBridge = {
   init() {
     try {
@@ -59,9 +62,19 @@ export const telegramBridge: PlatformBridge = {
   showBackButton(show, callback) {
     try {
       if (!tg?.isVersionAtLeast?.('6.1')) return;
+
+      // Снимаем старый callback перед любым действием
+      if (_backCallback) {
+        tg.BackButton?.offClick?.(_backCallback);
+        _backCallback = null;
+      }
+
       if (show) {
         tg.BackButton?.show?.();
-        if (callback) tg.BackButton?.onClick?.(callback);
+        if (callback) {
+          _backCallback = callback;
+          tg.BackButton?.onClick?.(_backCallback);
+        }
       } else {
         tg.BackButton?.hide?.();
       }

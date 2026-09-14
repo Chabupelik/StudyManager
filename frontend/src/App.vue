@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { useUiStore } from './stores/ui';
 import { useWsStore } from './stores/ws';
@@ -23,24 +23,55 @@ const authStore = useAuthStore();
 const uiStore = useUiStore();
 const wsStore = useWsStore();
 
+// ── Telegram BackButton ────────────────────────────────────────────────────
+const backScreens = new Set(['details', 'student-absences']);
+
+function isBackScreen() {
+  return backScreens.has(uiStore.activeScreen);
+}
+
+function registerBackButton() {
+  appBridge.showBackButton(isBackScreen(), () => uiStore.goBack());
+}
+
 onMounted(async () => {
   await authStore.init();
   wsStore.connect();
-
-  // Кнопка «Назад» (TG показывает нативную, VK — no-op)
-  appBridge.showBackButton(false, () => {
-    uiStore.goBack();
-  });
+  registerBackButton();
 });
 
-// Update BackButton visibility on active screen change
-watch(
-  () => uiStore.activeScreen,
-  (screen) => {
-    const shouldShow = screen === 'details' || screen === 'student-absences';
-    appBridge.showBackButton(shouldShow);
+watch(() => uiStore.activeScreen, registerBackButton);
+
+// ── Swipe-right-to-go-back ────────────────────────────────────────────────
+let touchStartX = 0;
+let touchStartY = 0;
+
+function onTouchStart(e: TouchEvent) {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}
+
+function onTouchEnd(e: TouchEvent) {
+  if (!isBackScreen()) return;
+
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+
+  // Свайп вправо: горизонтальный сдвиг > 60px, вертикальный дрейф < 80px
+  if (dx > 60 && dy < 80) {
+    uiStore.goBack();
   }
-);
+}
+
+onMounted(() => {
+  window.addEventListener('touchstart', onTouchStart, { passive: true });
+  window.addEventListener('touchend', onTouchEnd, { passive: true });
+});
+
+onUnmounted(() => {
+  window.removeEventListener('touchstart', onTouchStart);
+  window.removeEventListener('touchend', onTouchEnd);
+});
 </script>
 
 <template>
