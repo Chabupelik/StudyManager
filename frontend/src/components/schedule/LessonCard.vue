@@ -40,15 +40,6 @@ function getEndTime(startTime: string, name: string): string {
     }"
     @click="emit('click')"
   >
-    <!-- CURRENT indicator -->
-    <div
-      v-if="lesson.is_current"
-      class="absolute top-2.5 right-3 flex items-center gap-1 bg-app-accent text-white text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full shadow-sm uppercase z-10"
-    >
-      <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-      СЕЙЧАС
-    </div>
-
     <!-- Time Badge Column -->
     <div
       class="flex flex-col items-center justify-center px-1.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs min-w-[50px] border border-blue-200/80 dark:border-blue-800/60 flex-shrink-0 self-start mt-0.5"
@@ -80,7 +71,14 @@ function getEndTime(startTime: string, name: string): string {
         <span class="truncate">{{ lesson.teacher || 'Преподаватель не назначен' }}</span>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span
+          v-if="lesson.is_current"
+          class="inline-flex items-center gap-1 bg-app-accent text-white text-[10.5px] font-black tracking-wider px-2 py-0.5 rounded-full shadow-sm uppercase"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+          СЕЙЧАС
+        </span>
         <span
           v-if="lesson.absent_count > 0"
           class="inline-flex items-center gap-1 bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10.5px] font-bold px-2 py-0.5 rounded-md"

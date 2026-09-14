@@ -7,14 +7,19 @@ from app.repositories.student_repo import StudentRepository
 
 
 class UserContext:
-    __slots__ = ("first_name", "id", "username")
+    __slots__ = ("first_name", "id", "platform", "username")
 
     def __init__(
-        self, id: int, first_name: str = "", username: str | None = None
+        self,
+        id: int,
+        first_name: str = "",
+        username: str | None = None,
+        platform: str = "web",
     ) -> None:
         self.id = id
         self.first_name = first_name
         self.username = username
+        self.platform = platform
 
     @property
     def is_developer(self) -> bool:

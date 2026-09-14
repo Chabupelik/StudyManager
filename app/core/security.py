@@ -76,7 +76,9 @@ def validate_vk_sign(query_string: str, protected_key: str) -> dict | None:
             sorted_query.encode("utf-8"),
             hashlib.sha256,
         ).digest()
-        expected_sign = base64.urlsafe_b64encode(computed_hash).decode("utf-8").rstrip("=")
+        expected_sign = (
+            base64.urlsafe_b64encode(computed_hash).decode("utf-8").rstrip("=")
+        )
 
         if hmac.compare_digest(client_sign, expected_sign):
             return vk_params
