@@ -73,13 +73,6 @@ function getEndTime(startTime: string, name: string): string {
 
       <div class="flex items-center gap-2 flex-wrap">
         <span
-          v-if="lesson.is_current"
-          class="inline-flex items-center gap-1 bg-app-accent text-white text-[10.5px] font-black tracking-wider px-2 py-0.5 rounded-full shadow-sm uppercase"
-        >
-          <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-          СЕЙЧАС
-        </span>
-        <span
           v-if="lesson.absent_count > 0"
           class="inline-flex items-center gap-1 bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10.5px] font-bold px-2 py-0.5 rounded-md"
         >
@@ -100,5 +93,14 @@ function getEndTime(startTime: string, name: string): string {
     <div class="text-app-muted group-hover:text-app-text transition-colors flex-shrink-0">
       <ChevronRight class="w-4 h-4 opacity-40 group-hover:opacity-100" />
     </div>
+
+    <!-- СЕЙЧАС badge — правый нижний угол -->
+    <span
+      v-if="lesson.is_current"
+      class="absolute bottom-2.5 right-9 inline-flex items-center gap-1 bg-app-accent text-white text-[9.5px] font-black tracking-wider px-2 py-0.5 rounded-full shadow-sm uppercase pointer-events-none"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+      СЕЙЧАС
+    </span>
   </div>
 </template>
