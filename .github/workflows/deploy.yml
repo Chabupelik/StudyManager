@@ -132,12 +132,7 @@ jobs:
           SHORT_SHA="${COMMIT_SHA:0:7}"
 
           escape() {
-            python3 -c "
-import sys, re
-text = sys.argv[1]
-escaped = re.sub(r'([_*\[\]()~\`>#+\-=|{}.!])', r'\\\1', text)
-print(escaped)
-" "$1"
+            python3 -c "import re,sys; print(re.sub(r'([_*\[\]()~\x60>#+\-=|{}.!])', r'\\\1', sys.argv[1]))" "$1"
           }
 
           MSG="${ICON} *$(escape "$STATUS_TEXT")*
