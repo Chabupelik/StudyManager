@@ -53,3 +53,5 @@ yarn-error.log*
 *.save.*
 report/
 
+# --- Tools output ---
+repomix-output.*
