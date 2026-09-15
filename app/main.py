@@ -8,7 +8,16 @@ from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from app.api.v1 import admin, attendance, auth, duties, schedule, stats
+from app.api.v1 import (
+    admin,
+    attendance,
+    auth,
+    duties,
+    groups,
+    groups_schedule,
+    schedule,
+    stats,
+)
 from app.core.config import get_settings
 from app.core.security import validate_tg_init_data, validate_vk_sign
 from app.data.students_data import STAFF, STUDENTS
@@ -72,6 +81,8 @@ def create_app() -> FastAPI:
     app.include_router(duties.router, prefix=PREFIX)
     app.include_router(stats.router, prefix=PREFIX)
     app.include_router(admin.router, prefix=PREFIX)
+    app.include_router(groups.router, prefix=PREFIX)
+    app.include_router(groups_schedule.router, prefix=PREFIX)
 
     @app.get("/api/uploads/{filename}")
     async def get_upload(filename: str):
