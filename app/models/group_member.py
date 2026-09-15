@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
-class MemberRole(str, enum.Enum):
+class MemberRole(enum.StrEnum):
     student = "student"
     deputy = "deputy"
     headman = "headman"
