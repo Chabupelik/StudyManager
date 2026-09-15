@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import Depends, Header, HTTPException, Query, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -171,7 +171,7 @@ def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
     }
 
     async def _check(
-        group_id: int = Query(..., description="Target group ID"),
+        group_id: int,
         ctx: UserPermissionContext = Depends(get_current_user_context),
     ) -> UserPermissionContext:
         if ctx.is_superadmin:
