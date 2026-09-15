@@ -136,10 +136,10 @@ jobs:
 
           MSG="${ICON} <b>$(esc "$STATUS_TEXT")</b>
 
-📦 <b>Коммит:</b> <code>${SHORT_SHA}</code>
-💬 $(esc "$COMMIT_MSG")
-👤 $(esc "$ACTOR")
-🔗 <a href=\"${RUN_URL}\">Открыть в Actions</a>"
+          📦 <b>Коммит:</b> <code>${SHORT_SHA}</code>
+          💬 $(esc "$COMMIT_MSG")
+          👤 $(esc "$ACTOR")
+          🔗 <a href=\"${RUN_URL}\">Открыть в Actions</a>"
 
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
