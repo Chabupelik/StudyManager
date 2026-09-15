@@ -131,20 +131,19 @@ jobs:
 
           SHORT_SHA="${COMMIT_SHA:0:7}"
 
-          escape() {
-            python3 -c "import re,sys; print(re.sub(r'([_*\[\]()~\x60>#+\-=|{}.!])', r'\\\1', sys.argv[1]))" "$1"
-          }
+          # HTML: экранируем только < > &
+          esc() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
 
-          MSG="${ICON} *$(escape "$STATUS_TEXT")*
+          MSG="${ICON} <b>$(esc "$STATUS_TEXT")</b>
 
-          📦 *Коммит:* \`${SHORT_SHA}\`
-          💬 $(escape "$COMMIT_MSG")
-          👤 $(escape "$ACTOR")
-          🔗 [Открыть в Actions](${RUN_URL})"
+📦 <b>Коммит:</b> <code>${SHORT_SHA}</code>
+💬 $(esc "$COMMIT_MSG")
+👤 $(esc "$ACTOR")
+🔗 <a href=\"${RUN_URL}\">Открыть в Actions</a>"
 
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
-            -d text="${MSG}" \
-            -d parse_mode="MarkdownV2" \
+            --data-urlencode "text=${MSG}" \
+            -d parse_mode="HTML" \
             -d disable_web_page_preview="true"
 
