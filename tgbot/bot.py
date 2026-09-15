@@ -30,6 +30,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from app.data.schedule_data import BASE_SCHEDULE
+
 load_dotenv()
 
 # --- CONFIG & SECRETS ---
@@ -133,9 +135,9 @@ VK_NAME_MAP = {
     s["vk_id"]: s["name"] for s in ALL_PEOPLE if s.get("vk_id") and s["vk_id"] != 0
 }
 
-from app.data.schedule_data import BASE_SCHEDULE
 
 UNDO_STORAGE = {}
+
 
 
 async def notify_backend_duties():
