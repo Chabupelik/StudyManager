@@ -480,11 +480,21 @@ class AsyncVKBridge:
                 att_strs.append(att_str)
         return ",".join(att_strs)
 
-    async def upload_photo(self, photo_bytes, peer_id):
+    async def upload_photo(self, photo_bytes, peer_id, _retry: bool = True):
         try:
             server_res = await self.api_call(
                 "photos.getMessagesUploadServer", {"peer_id": peer_id}
             )
+            if "error" in server_res:
+                err = server_res["error"]
+                code = err.get("error_code")
+                logging.error(
+                    f"VK Photo Upload Error: {err.get('error_msg')} (code {code})"
+                )
+                if code == 6 and _retry:  # too many requests — retry once
+                    await asyncio.sleep(1.0)
+                    return await self.upload_photo(photo_bytes, peer_id, _retry=False)
+                return ""
             upload_url = server_res["response"]["upload_url"]
 
             session = await self.get_session()
@@ -503,6 +513,9 @@ class AsyncVKBridge:
                     "hash": upload_data["hash"],
                 },
             )
+            if "error" in save_res:
+                logging.error(f"VK saveMessagesPhoto Error: {save_res['error']}")
+                return ""
             photo = save_res["response"][0]
             return f"photo{photo['owner_id']}_{photo['id']}"
         except Exception as e:
@@ -1490,6 +1503,8 @@ async def process_tg_messages_to_vk(messages: list[Message], target_vk_peer: int
             if msg.photo:
                 photo_bytes = await safe_download(msg.photo[-1].file_id)
                 if isinstance(photo_bytes, bytes):
+                    if attachments:  # пауза между фото чтобы не словить rate limit
+                        await asyncio.sleep(0.4)
                     att = await vk_bridge.upload_photo(photo_bytes, target_vk_peer)
                     if att:
                         attachments.append(att)
