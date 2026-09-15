@@ -139,7 +139,6 @@ VK_NAME_MAP = {
 UNDO_STORAGE = {}
 
 
-
 async def notify_backend_duties():
     """Отправляет сигнал бэкенду, чтобы тот уведомил веб-интерфейс через WebSocket."""
     try:
