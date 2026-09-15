@@ -22,12 +22,19 @@ class Settings(BaseSettings):
     vk_api_version: str = "5.199"
     vk_protected_key: str = ""  # Защищённый ключ из настроек VK Mini App (dev.vk.com)
 
-    admin_ids: str = ""
+    # ── Identity ─────────────────────────────────────────────────────────────
+    # DEVELOPER_ID is the only hardcoded identity: the superadmin Telegram ID.
+    # All other role assignments are managed via the group_members table.
     developer_id: int = 620159705
-    curator_id: int = 1331701095
 
+    # Deprecated: kept for backward compatibility with legacy endpoints only.
+    # Use group_members + MemberRole for all new permission logic.
+    admin_ids: str = ""
+    curator_id: int = 0  # deprecated
+
+    # ── Auth / secrets ────────────────────────────────────────────────────────
     logs_secret_key: str = ""
-    internal_secret: str = ""  # Used to authenticate bot -> backend internal calls
+    internal_secret: str = ""  # Used to authenticate bot → backend internal calls
 
     api_keys: str = ""
 
@@ -35,12 +42,19 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 30
 
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     postgres_db: str = "postgres"
     postgres_host: str = "db"
     postgres_port: int = 5432
 
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    redis_host: str = "redis"
+    redis_port: int = 6379
+    redis_db: int = 0
+
+    # ── Misc ──────────────────────────────────────────────────────────────────
     show_docs: bool = False
 
     @property
@@ -52,6 +66,7 @@ class Settings(BaseSettings):
 
     @property
     def admin_ids_list(self) -> list[int]:
+        """Deprecated: returns IDs from ADMIN_IDS env var for legacy endpoints."""
         return [int(x.strip()) for x in self.admin_ids.split(",") if x.strip()]
 
     @property

@@ -14,7 +14,7 @@ from app.core.security import validate_tg_init_data, validate_vk_sign
 from app.data.students_data import STAFF, STUDENTS
 from app.db.database import async_session_maker, engine
 from app.services.audit_service import log_action
-from app.services.user_service import UserContext, get_display_name, load_student_cache
+from app.services.user_service import UserContext, get_display_name
 from app.websocket.manager import manager
 
 logging.basicConfig(level=logging.INFO)
@@ -24,22 +24,23 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("▶ Starting StudyManager...")
-    try:
-        async with engine.begin() as conn:
-            from app.models.base import Base
 
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Database tables initialized")
-    except Exception as e:
-        logger.error(f"❌ Database initialization error: {e}")
-        raise
+    # Schema is managed exclusively by Alembic (entrypoint.sh runs
+    # `alembic upgrade head` before this process starts).
+    # Base.metadata.create_all is intentionally absent here.
 
-    async with async_session_maker() as session:
-        await load_student_cache(session)
-    logger.info("✅ Student cache loaded")
+    # Initialise the shared Redis connection pool.
+    from app.db.redis_client import close_redis_pool, create_redis_pool
+
+    create_redis_pool()
+    logger.info("✅ Redis pool initialised")
 
     logger.info("🚀 StudyManager is ready")
     yield
+
+    # Graceful shutdown: flush pending Redis commands and close the pool.
+    await close_redis_pool()
+    logger.info("✅ Redis pool closed")
 
     await engine.dispose()
     logger.info("🛑 StudyManager stopped")
