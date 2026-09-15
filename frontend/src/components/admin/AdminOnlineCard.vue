@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AdminUser } from '../../types/admin';
 import Avatar from '../common/Avatar.vue';
-import { formatTime } from '../../utils/date';
+import { formatLastSeen } from '../../utils/date';
 
 defineProps<{
   admin: AdminUser;
@@ -15,7 +15,7 @@ defineProps<{
       <div class="min-w-0">
         <div class="font-medium text-sm text-tg-text truncate">{{ admin.name }}</div>
         <div class="text-xs text-tg-hint">
-          {{ admin.is_online ? 'В сети' : (admin.last_seen ? `Был: ${formatTime(admin.last_seen)}` : 'Не заходил') }}
+          {{ admin.is_online ? 'В сети' : (admin.last_seen ? `Был: ${formatLastSeen(admin.last_seen)}` : 'Не заходил') }}
         </div>
       </div>
     </div>
