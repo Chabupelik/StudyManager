@@ -133,10 +133,7 @@ VK_NAME_MAP = {
     s["vk_id"]: s["name"] for s in ALL_PEOPLE if s.get("vk_id") and s["vk_id"] != 0
 }
 
-try:
-    from app.data.schedule_data import BASE_SCHEDULE
-except Exception:
-    from schedule_data import BASE_SCHEDULE
+from app.data.schedule_data import BASE_SCHEDULE
 
 UNDO_STORAGE = {}
 
