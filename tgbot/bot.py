@@ -725,9 +725,14 @@ async def generate_excel_report(year: str, month: str):
     ws.cell(row=row_idx, column=START_COL).border = border
     ws.cell(row=row_idx, column=START_COL + 1).border = border
     for d in range(1, last_day + 1):
-        c = ws.cell(row=row_idx, column=START_COL + 1 + d, value=day_totals[d] or 0)
+        c = ws.cell(row=row_idx, column=START_COL + 1 + d)
         c.font = bold_font
         c.border = border
+        if d in grey_days:
+            c.fill = grey_fill
+        else:
+            total = day_totals[d]
+            c.value = total if total else None
 
     ws.cell(
         row=row_idx, column=tot_col, value=grand_total_nb + grand_total_uv
