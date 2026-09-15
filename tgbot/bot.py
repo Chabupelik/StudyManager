@@ -505,6 +505,15 @@ class AsyncVKBridge:
             async with session.post(upload_url, data=form) as resp:
                 upload_data = await resp.json()
 
+            # VK иногда возвращает пустой photo при нагрузке — ретраим
+            if not upload_data.get("photo"):
+                if _retry:
+                    logging.warning("VK upload returned empty photo field, retrying...")
+                    await asyncio.sleep(1.0)
+                    return await self.upload_photo(photo_bytes, peer_id, _retry=False)
+                logging.error("VK upload returned empty photo field (no retry left)")
+                return ""
+
             save_res = await self.api_call(
                 "photos.saveMessagesPhoto",
                 {
