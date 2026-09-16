@@ -66,9 +66,23 @@ function onTouchEnd(e: TouchEvent) {
     @touchstart="onTouchStart"
     @touchend="onTouchEnd"
   >
-    <!-- Header with Date Pill -->
-    <header class="p-3 premium-header sticky top-0 z-10 flex-shrink-0 shadow-sm">
+    <!-- Header with Date Pill and Group Selector -->
+    <header class="p-3 premium-header sticky top-0 z-10 flex-shrink-0 shadow-sm flex flex-col gap-2">
       <DatePill />
+      
+      <!-- Group Selector for Admins -->
+      <div v-if="authStore.myGroups.length > 1" class="px-1">
+        <select
+          v-model="scheduleStore.selectedGroupId"
+          @change="scheduleStore.loadSchedule()"
+          class="w-full bg-app-card border border-app-border rounded-xl px-3 py-2 text-sm text-app-text font-medium outline-none focus:border-app-accent transition-colors shadow-sm appearance-none cursor-pointer"
+        >
+          <option :value="null">Основная группа (по умолчанию)</option>
+          <option v-for="g in authStore.myGroups" :key="g.id" :value="g.id">
+            Группа: {{ g.name }}
+          </option>
+        </select>
+      </div>
     </header>
 
     <!-- Lessons List with inner scrolling -->

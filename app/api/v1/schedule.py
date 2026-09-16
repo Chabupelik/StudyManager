@@ -41,6 +41,7 @@ async def _log_schedule_action(
 async def get_schedule(
     date: str,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    group_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     _parse_date(date)  # validate
@@ -50,15 +51,26 @@ async def get_schedule(
 
     if not ctx.groups_roles and not ctx.is_superadmin:
         return ScheduleResponse(date=date, lessons=[])
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    target_group_id = (
+        group_id
+        if group_id
+        else (int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1)
+    )
+
+    # Check permissions for target_group_id
+    if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    overrides = await ovr_repo.get_for_date(date)
-    absent_counts = await att_repo.get_absent_count_by_time(group_id, date)
+    overrides = await ovr_repo.get_for_date(target_group_id, date)
+    absent_counts = await att_repo.get_absent_count_by_time(target_group_id, date)
 
-    lessons = build_schedule(date, overrides, absent_counts, current_time_str)
+    lessons = build_schedule(
+        target_group_id, date, overrides, absent_counts, current_time_str
+    )
     return ScheduleResponse(date=date, lessons=lessons)
 
 
@@ -72,12 +84,29 @@ async def update_override(
 ):
     if not ctx.groups_roles and not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Forbidden")
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    target_group_id = (
+        data.group_id
+        if data.group_id
+        else (int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1)
+    )
+
+    if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Only admins can update overrides for this group
+    if not ctx.is_superadmin and ctx.groups_roles.get(str(target_group_id)) not in [
+        "headman",
+        "deputy",
+        "curator",
+    ]:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
     await ovr_repo.upsert(
+        group_id=target_group_id,
         date=data.date,
         time=data.time,
         new_name=data.new_name,
@@ -86,7 +115,7 @@ async def update_override(
     )
 
     if data.is_canceled == 1:
-        await att_repo.delete_for_lesson(group_id, data.date, data.time)
+        await att_repo.delete_for_lesson(target_group_id, data.date, data.time)
 
     await db.commit()
     await manager.broadcast({"type": "override", "date": data.date})

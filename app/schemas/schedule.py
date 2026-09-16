@@ -18,6 +18,7 @@ class ScheduleResponse(BaseModel):
 class OverrideUpdateRequest(BaseModel):
     date: str
     time: str
+    group_id: int | None = None
     new_name: str | None = None
     new_teacher: str | None = None
     is_canceled: int

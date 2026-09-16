@@ -18,6 +18,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isDeveloper = computed(() => user.value?.id === 620159705 || myTgId.value === 620159705);
   const myTgId = computed(() => user.value?.id || 0);
 
+  const myGroups = ref<{ id: number; name: string }[]>([]);
+
   async function init() {
     // PC-модалка только если нет TG и нет VK параметров
     if (detectPlatform() === 'web' && !ApiClient.getToken()) {
@@ -41,6 +43,13 @@ export const useAuthStore = defineStore('auth', () => {
         if (isAdmin.value) {
           ApiClient.get('/api/admin/ping').catch(() => {});
         }
+        
+        try {
+          const groups = await ApiClient.get('/api/groups/my');
+          myGroups.value = groups || [];
+        } catch (e) {
+          console.error("Failed to fetch groups", e);
+        }
       }
     } catch (e: any) {
       if (e.message === 'FORBIDDEN_NOT_IN_GROUP') {
@@ -55,11 +64,10 @@ export const useAuthStore = defineStore('auth', () => {
     debugRoleOverride.value = newRole;
   }
 
-
-
   return {
     role,
     user,
+    myGroups,
     isForbidden,
     showPcLoginModal,
     effectiveRole,

@@ -8,9 +8,9 @@ from app.repositories.base import BaseRepository
 
 
 class OverrideRepository(BaseRepository):
-    async def get_for_date(self, date: str) -> list[Override]:
+    async def get_for_date(self, group_id: int, date: str) -> list[Override]:
         result = await self.session.execute(
-            select(Override).where(Override.date == date)
+            select(Override).where(Override.group_id == group_id, Override.date == date)
         )
         return list(result.scalars().all())
 
@@ -20,6 +20,7 @@ class OverrideRepository(BaseRepository):
 
     async def upsert(
         self,
+        group_id: int,
         date: str,
         time: str,
         new_name: str | None,
@@ -27,6 +28,7 @@ class OverrideRepository(BaseRepository):
         is_canceled: int,
     ) -> None:
         stmt = pg_insert(Override).values(
+            group_id=group_id,
             date=date,
             time=time,
             new_name=new_name,

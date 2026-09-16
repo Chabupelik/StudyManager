@@ -9,6 +9,7 @@ export const useScheduleStore = defineStore('schedule', () => {
   const lessons = ref<Lesson[]>([]);
   const loading = ref(false);
   const selectedLesson = ref<Lesson | null>(null);
+  const selectedGroupId = ref<number | null>(null);
 
   // In-memory caching
   const cache = new Map<string, { data: Lesson[]; expires: number }>();
@@ -52,7 +53,10 @@ export const useScheduleStore = defineStore('schedule', () => {
 
     loading.value = true;
     try {
-      const res = await ApiClient.get<ScheduleResponse>(`/api/schedule?date=${key}`);
+      const url = selectedGroupId.value 
+        ? `/api/schedule?date=${key}&group_id=${selectedGroupId.value}` 
+        : `/api/schedule?date=${key}`;
+      const res = await ApiClient.get<ScheduleResponse>(url);
       lessons.value = res.lessons || [];
       cache.set(key, { data: lessons.value, expires: now + CACHE_TTL });
     } catch (e) {
@@ -70,7 +74,10 @@ export const useScheduleStore = defineStore('schedule', () => {
     const key = dateKey.value;
     const now = Date.now();
     try {
-      const res = await ApiClient.get<ScheduleResponse>(`/api/schedule?date=${key}`);
+      const url = selectedGroupId.value 
+        ? `/api/schedule?date=${key}&group_id=${selectedGroupId.value}` 
+        : `/api/schedule?date=${key}`;
+      const res = await ApiClient.get<ScheduleResponse>(url);
       lessons.value = res.lessons || [];
       cache.set(key, { data: lessons.value, expires: now + CACHE_TTL });
     } catch (e) {
@@ -82,6 +89,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     await ApiClient.post('/api/override', {
       date: dateKey.value,
       time,
+      group_id: selectedGroupId.value,
       new_name: newName,
       new_teacher: newTeacher,
       is_canceled: isCanceled,
@@ -95,6 +103,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     lessons,
     loading,
     selectedLesson,
+    selectedGroupId,
     dateKey,
     changeDay,
     changeMonth,

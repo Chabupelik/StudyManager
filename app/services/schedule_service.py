@@ -4,27 +4,29 @@ from datetime import datetime, timedelta
 
 import pytz
 
-from app.data.schedule_data import BASE_SCHEDULE
+from app.data.schedule_data import BASE_SCHEDULES
 from app.models.override import Override
 
 MSK = pytz.timezone("Europe/Moscow")
 LESSON_DURATION_MINUTES = 90
 
 
-def get_base_times_for_date(date_str: str) -> set[str]:
+def get_base_times_for_date(group_id: int, date_str: str) -> set[str]:
     weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+    base_schedule = BASE_SCHEDULES.get(group_id, [])
     return {
         l["time"]
-        for l in BASE_SCHEDULE
+        for l in base_schedule
         if l["day"] == weekday and l["start"] <= date_str <= l["end"]
     }
 
 
-def get_base_lessons_for_date(date_str: str) -> list[dict]:
+def get_base_lessons_for_date(group_id: int, date_str: str) -> list[dict]:
     weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+    base_schedule = BASE_SCHEDULES.get(group_id, [])
     return [
         l.copy()
-        for l in BASE_SCHEDULE
+        for l in base_schedule
         if l["day"] == weekday and l["start"] <= date_str <= l["end"]
     ]
 
@@ -38,12 +40,13 @@ def compute_active_times(base_times: set[str], overrides: list[Override]) -> set
 
 
 def build_schedule(
+    group_id: int,
     date_str: str,
     overrides: list[Override],
     absent_counts: dict[str, int],
     current_time_str: str | None = None,
 ) -> list[dict]:
-    base_lessons = get_base_lessons_for_date(date_str)
+    base_lessons = get_base_lessons_for_date(group_id, date_str)
     override_map: dict[str, Override] = {o.time: o for o in overrides}
 
     temp: list[dict] = []
@@ -106,17 +109,19 @@ def build_schedule(
 
 
 def get_subject_at(
+    group_id: int,
     date_str: str,
     time_str: str,
     weekday: int,
     override_map: dict[tuple[str, str], dict],
 ) -> tuple[str | None, str | None]:
     ovr = override_map.get((date_str, time_str))
+    base_schedule = BASE_SCHEDULES.get(group_id, [])
     if ovr and ovr["canceled"]:
         return None, None
     if ovr and ovr["name"]:
         teacher = next(
-            (l["teacher"] for l in BASE_SCHEDULE if l["name"] == ovr["name"]),
+            (l["teacher"] for l in base_schedule if l["name"] == ovr["name"]),
             "Замена",
         )
         return ovr["name"], teacher
@@ -124,7 +129,7 @@ def get_subject_at(
     match = next(
         (
             l
-            for l in BASE_SCHEDULE
+            for l in base_schedule
             if l["day"] == weekday
             and l["time"] == time_str
             and l["start"] <= date_str <= l["end"]
