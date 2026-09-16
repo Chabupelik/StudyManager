@@ -55,7 +55,7 @@ function getEndTime(startTime: string, name: string): string {
       >
         <MapPin class="w-[10px] h-[10px] text-app-accent flex-shrink-0 mt-[1px] opacity-80" />
         <span class="text-[9.5px] font-bold leading-[1.1] tracking-tight text-center break-words">
-          {{ lesson.classroom }}
+          Каб. {{ lesson.classroom }}
         </span>
       </div>
     </div>
