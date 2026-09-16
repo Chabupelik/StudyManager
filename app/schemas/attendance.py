@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class AttendanceUpdateRequest(BaseModel):
     date: str
     time: str
+    group_id: int
     student_id: int
     status: int
     reason: str | None = ""

@@ -43,16 +43,16 @@ def _parse_date(date: str) -> datetime:
 async def get_lesson_details(
     date: str,
     time: str,
+    group_id: int,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     _parse_date(date)  # validate
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
-        return LessonDetailsResponse(students=[])
-
-    # Fallback to the first group if no group_id is specified in the frontend yet
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
+        raise HTTPException(
+            status_code=403, detail="Forbidden: No access to this group"
+        )
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
@@ -128,9 +128,9 @@ async def update_attendance(
 ):
     _parse_date(data.date)  # validate
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    group_id = data.group_id
+    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
@@ -198,9 +198,9 @@ async def update_attendance_day(
 ):
     _parse_date(data.date)  # validate
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    group_id = data.group_id
+    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)

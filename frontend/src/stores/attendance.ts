@@ -39,7 +39,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     loading.value = true;
     try {
       const res = await ApiClient.get<LessonDetailsResponse>(
-        `/api/lesson_details?date=${scheduleStore.dateKey}&time=${time}`
+        `/api/lesson_details?date=${scheduleStore.dateKey}&time=${time}&group_id=${scheduleStore.selectedGroupId}`
       );
       students.value = res.students || [];
     } catch (e) {
@@ -52,7 +52,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
   async function refreshDetailsSilently() {
     try {
       const res = await ApiClient.get<LessonDetailsResponse>(
-        `/api/lesson_details?date=${scheduleStore.dateKey}&time=${lessonTime.value}`
+        `/api/lesson_details?date=${scheduleStore.dateKey}&time=${lessonTime.value}&group_id=${scheduleStore.selectedGroupId}`
       );
       students.value = res.students || [];
     } catch (e) {
@@ -72,6 +72,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
       await ApiClient.post('/api/attendance', {
         date: scheduleStore.dateKey,
         time: lessonTime.value,
+        group_id: scheduleStore.selectedGroupId,
         student_id: studentId,
         status,
         reason,
@@ -89,6 +90,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
       await ApiClient.post('/api/attendance/day', {
         date: scheduleStore.dateKey,
         time: lessonTime.value,
+        group_id: scheduleStore.selectedGroupId,
         student_id: studentId,
         status,
         reason,
