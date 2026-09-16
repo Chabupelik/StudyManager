@@ -133,7 +133,7 @@ async def update_override(
     return {"status": "ok"}
 
 
-@router.get("/base", response_model=list[dict])
+@router.get("/admin/base", response_model=list[dict])
 async def get_base_schedule(
     group_id: int,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
