@@ -131,7 +131,7 @@ async function deleteLesson(id: number) {
   }
 }
 
-const expandedDays = ref<Set<number>>(new Set([1, 2, 3, 4, 5, 6]));
+const expandedDays = ref<Set<number>>(new Set([0, 1, 2, 3, 4, 5]));
 
 function toggleDay(day: number) {
   if (expandedDays.value.has(day)) {
@@ -153,7 +153,7 @@ function toggleDay(day: number) {
     </div>
 
     <div v-else class="space-y-3">
-      <div v-for="day in 7" :key="day" class="premium-card rounded-2xl overflow-hidden border border-app-border">
+      <div v-for="(_, day) in daysOfWeek" :key="day" class="premium-card rounded-2xl overflow-hidden border border-app-border">
         <!-- Day Header -->
         <button 
           @click="toggleDay(day)"
@@ -161,7 +161,7 @@ function toggleDay(day: number) {
         >
           <span class="font-semibold text-app-text text-sm flex items-center gap-2">
             <CalendarIcon class="w-4 h-4 text-app-accent" />
-            {{ daysOfWeek[day - 1] }}
+            {{ daysOfWeek[day] }}
           </span>
           <div class="flex items-center gap-3">
             <span class="text-xs font-medium text-app-muted bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded-full">

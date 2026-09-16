@@ -158,7 +158,7 @@ async def get_base_schedule(
     lessons = (await db.execute(stmt_lessons)).scalars().all()
 
     res = []
-    for day in range(1, 8):
+    for day in range(0, 7):
         day_lessons = [
             l
             for l in lessons
