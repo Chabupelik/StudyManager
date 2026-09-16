@@ -41,9 +41,9 @@ function getEndTime(startTime: string, name: string): string {
     @click="emit('click')"
   >
     <!-- Time Badge Column -->
-    <div class="flex flex-col gap-1 self-start mt-0.5">
+    <div class="flex flex-col items-center gap-1.5 self-start mt-0.5 w-[64px] flex-shrink-0">
       <div
-        class="flex flex-col items-center justify-center px-1.5 py-1.5 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs min-w-[50px] border border-blue-200/80 dark:border-blue-800/60 flex-shrink-0"
+        class="flex flex-col items-center justify-center px-1.5 py-1.5 w-full rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs border border-blue-200/80 dark:border-blue-800/60 shadow-sm"
       >
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
@@ -51,11 +51,11 @@ function getEndTime(startTime: string, name: string): string {
       </div>
       <div
         v-if="lesson.classroom"
-        class="flex items-center justify-center gap-0.5 px-1.5 py-1 w-full max-w-[75px] rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800/80 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-sm transition-colors group-hover:border-slate-300 dark:group-hover:border-slate-600"
+        class="flex items-start justify-center gap-1 text-slate-500 dark:text-slate-400 w-full px-0.5"
       >
-        <MapPin class="w-2.5 h-2.5 text-app-accent flex-shrink-0 opacity-90" />
-        <span class="text-[9px] font-bold leading-none tracking-tight truncate text-center">
-          Каб. {{ lesson.classroom }}
+        <MapPin class="w-[10px] h-[10px] text-app-accent flex-shrink-0 mt-[1px] opacity-80" />
+        <span class="text-[9.5px] font-bold leading-[1.1] tracking-tight text-center break-words">
+          {{ lesson.classroom }}
         </span>
       </div>
     </div>
