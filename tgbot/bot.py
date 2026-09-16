@@ -1636,7 +1636,7 @@ async def process_tg_messages_to_vk(messages: list[Message], target_vk_peer: int
             await save_msg_link(m.message_id, vk_msg_id)
 
 
-@dp.message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()), ~F.text.startswith("/"))
+@dp.message(lambda msg: msg.chat.id in REVERSE_CHAT_MAP, ~F.text.startswith("/"))
 async def tg_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
@@ -1662,7 +1662,7 @@ async def tg_to_vk_handler(message: Message):
         await process_tg_messages_to_vk([message], target_vk_peer)
 
 
-@dp.edited_message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()))
+@dp.edited_message(lambda msg: msg.chat.id in REVERSE_CHAT_MAP)
 async def tg_edit_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
