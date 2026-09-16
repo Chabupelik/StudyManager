@@ -61,12 +61,8 @@ const isSaving = ref(false);
 function openAddModal(day_of_week: number) {
   const defaultStart = '08:00';
   const defaultEnd = '09:30';
-  const existingLessons = schedules.value.find(s => s.day_of_week === day_of_week)?.lessons || [];
-  const nextNumber = existingLessons.length > 0 ? Math.max(...existingLessons.map(l => l.lesson_number)) + 1 : 1;
-  
   editingLesson.value = {
     day_of_week,
-    lesson_number: nextNumber,
     name: '',
     teacher: '',
     classroom: '',
@@ -94,7 +90,7 @@ async function saveLesson() {
   isSaving.value = true;
   try {
     const payload = {
-      lesson_number: Number(editingLesson.value.lesson_number || 1),
+      lesson_number: 1,
       name: editingLesson.value.name,
       teacher: editingLesson.value.teacher || null,
       classroom: editingLesson.value.classroom || null,
@@ -175,14 +171,14 @@ function toggleDay(day: number) {
         <!-- Lessons List -->
         <div v-show="expandedDays.has(day)" class="p-3 bg-app-card border-t border-app-border space-y-2">
           <div 
-            v-for="lesson in (schedules.find(s => s.day_of_week === day)?.lessons || [])" 
+            v-for="(lesson, index) in (schedules.find(s => s.day_of_week === day)?.lessons || [])" 
             :key="lesson.id"
             class="group flex flex-col sm:flex-row gap-3 sm:items-center justify-between p-3 rounded-xl border border-app-border/50 bg-slate-50/50 dark:bg-slate-800/20 hover:border-app-accent/30 hover:bg-app-accent/5 transition-all"
           >
             <!-- Lesson Info -->
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-app-text font-bold text-xs shrink-0">
-                {{ lesson.lesson_number }}
+                {{ index + 1 }}
               </div>
               <div>
                 <div class="text-sm font-bold text-app-text">{{ lesson.name }}</div>
@@ -255,11 +251,6 @@ function toggleDay(day: number) {
         <!-- Body -->
         <div class="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-1.5 col-span-2 sm:col-span-1">
-              <label class="text-xs font-bold text-app-muted uppercase">Номер пары</label>
-              <input type="number" v-model="editingLesson.lesson_number" class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-app-accent rounded-xl px-3 py-2 text-sm text-app-text outline-none transition-colors" />
-            </div>
-            
             <div class="space-y-1.5 col-span-2">
               <label class="text-xs font-bold text-app-muted uppercase">Название предмета *</label>
               <input type="text" v-model="editingLesson.name" placeholder="Например: Математика" class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-app-accent rounded-xl px-3 py-2 text-sm text-app-text outline-none transition-colors" />

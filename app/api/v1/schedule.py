@@ -190,7 +190,7 @@ async def get_base_schedule(
     return res
 
 
-@router.post("/base/{group_id}/{day_of_week}")
+@router.post("/admin/base/{group_id}/{day_of_week}")
 async def create_base_lesson(
     group_id: int,
     day_of_week: int,
@@ -235,7 +235,7 @@ async def create_base_lesson(
     return {"status": "ok", "id": lesson.id}
 
 
-@router.put("/base/lesson/{lesson_id}")
+@router.put("/admin/base/lesson/{lesson_id}")
 async def update_base_lesson(
     lesson_id: int,
     data: dict,
@@ -282,7 +282,7 @@ async def update_base_lesson(
     return {"status": "ok"}
 
 
-@router.delete("/base/lesson/{lesson_id}")
+@router.delete("/admin/base/lesson/{lesson_id}")
 async def delete_base_lesson(
     lesson_id: int,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
