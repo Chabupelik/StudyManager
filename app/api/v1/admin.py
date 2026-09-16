@@ -102,13 +102,19 @@ async def get_init(
         raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
 
     settings = get_settings()
-    return {
-        "role": "admin"
-        if (
-            ctx.user.id in settings.admin_ids_list
-            or ctx.user.id == settings.developer_id
+
+    # User is an admin if they are superadmin, in admin_ids_list, or have an admin-level role in any group
+    is_admin = (
+        ctx.is_superadmin
+        or ctx.user.id in settings.admin_ids_list
+        or any(
+            role in ["headman", "deputy", "curator"]
+            for role in ctx.groups_roles.values()
         )
-        else "viewer",
+    )
+
+    return {
+        "role": "admin" if is_admin else "viewer",
         "user": {"id": ctx.user.id, "first_name": ctx.user.first_name},
     }
 
