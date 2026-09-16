@@ -90,7 +90,7 @@ async def load_chat_maps_from_db() -> None:
     CHAT_MAP.update(new_map)
     REVERSE_CHAT_MAP.clear()
     REVERSE_CHAT_MAP.update({v: k for k, v in CHAT_MAP.items()})
-    logging.info("Chat maps loaded: %d group(s)", len(CHAT_MAP))
+    logging.info(f"Chat maps loaded: {len(CHAT_MAP)} group(s). Contents: {CHAT_MAP}")
 
 
 async def chat_map_refresh_loop():
