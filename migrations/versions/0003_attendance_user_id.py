@@ -15,7 +15,6 @@ Strategy
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0003"
@@ -25,24 +24,31 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # 1. Add new column (nullable so it doesn't break rows that can't be matched)
-    op.add_column(
-        "attendance",
-        sa.Column("user_id", sa.Integer(), nullable=True),
+    # Use raw SQL with IF NOT EXISTS guards so the migration is safe to
+    # re-run if a previous attempt partially committed DDL.
+
+    # 1. Add column (idempotent)
+    op.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS user_id INTEGER")
+
+    # 2. FK constraint — only add if it does not already exist
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'fk_attendance_user_id'
+            ) THEN
+                ALTER TABLE attendance
+                    ADD CONSTRAINT fk_attendance_user_id
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                    ON DELETE SET NULL;
+            END IF;
+        END $$;
+        """
     )
 
-    # 2. Create FK constraint (deferred so the NULL rows don't violate it)
-    op.create_foreign_key(
-        "fk_attendance_user_id",
-        "attendance",
-        "users",
-        ["user_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-
-    # 3. Back-fill: match via tg_id linkage
-    #    students.tg_id == users.tg_user_id → attendance.student_id == students.id
+    # 3. Back-fill: link via students.tg_id = users.tg_user_id
     op.execute(
         """
         UPDATE attendance AS a
@@ -51,11 +57,14 @@ def upgrade() -> None:
         JOIN users AS u ON u.tg_user_id = s.tg_id
         WHERE s.id = a.student_id
           AND a.student_id IS NOT NULL
+          AND a.user_id IS NULL
         """
     )
 
-    # 4. Index for future queries by user_id
-    op.create_index("ix_attendance_user_id", "attendance", ["user_id"])
+    # 4. Index (idempotent)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_attendance_user_id ON attendance(user_id)"
+    )
 
 
 def downgrade() -> None:
