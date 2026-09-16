@@ -35,7 +35,7 @@ async function loadSchedules() {
   if (!props.groupId) return;
   loading.value = true;
   try {
-    const res = await api.get(`/api/schedule/admin/base?group_id=${props.groupId}`);
+    const res = await api.get(`/api/admin/base?group_id=${props.groupId}`);
     schedules.value = Array.isArray(res) ? res : [];
   } catch (error) {
     uiStore.showToast('Ошибка загрузки расписания', 'error');
@@ -101,10 +101,10 @@ async function saveLesson() {
     };
     
     if (editingLesson.value.id) {
-      await api.put(`/api/schedule/admin/base/lesson/${editingLesson.value.id}`, payload);
+      await api.put(`/api/admin/base/lesson/${editingLesson.value.id}`, payload);
       uiStore.showToast('Пара обновлена', 'success');
     } else {
-      await api.post(`/api/schedule/admin/base/${props.groupId}/${editingLesson.value.day_of_week}`, payload);
+      await api.post(`/api/admin/base/${props.groupId}/${editingLesson.value.day_of_week}`, payload);
       uiStore.showToast('Пара добавлена', 'success');
     }
     closeModal();
@@ -119,7 +119,7 @@ async function saveLesson() {
 async function deleteLesson(id: number) {
   if (!confirm('Вы уверены, что хотите удалить эту пару?')) return;
   try {
-    await api.delete(`/api/schedule/admin/base/lesson/${id}`);
+    await api.delete(`/api/admin/base/lesson/${id}`);
     uiStore.showToast('Пара удалена', 'success');
     loadSchedules();
   } catch (error) {
