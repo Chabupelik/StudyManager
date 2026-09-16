@@ -89,20 +89,21 @@ async def load_chat_maps_from_db() -> None:
         new_admin_users = set()
         new_excluded_ids = set()
 
+        member_rows = await pool.fetch("SELECT user_id, role FROM group_members")
+        for m in member_rows:
+            if m["role"] in ("headman", "deputy", "curator"):
+                new_excluded_ids.add(m["user_id"])
+                new_admin_users.add(m["user_id"])  # We'll map this to tg_user_id below
+                new_admin_users.add(m["user_id"])  # We'll map this to tg_user_id below
+
+        final_admin_users = set()
         for u in user_rows:
             if u["tg_user_id"]:
                 new_tg_map[u["tg_user_id"]] = u["full_name"]
+                if u["is_superadmin"] or u["id"] in new_admin_users:
+                    final_admin_users.add(u["tg_user_id"])
             if u["vk_user_id"]:
                 new_vk_map[u["vk_user_id"]] = u["full_name"]
-            if u["is_superadmin"]:
-                new_admin_users.add(u["tg_user_id"])
-
-        # Also fetch group roles to update ADMIN_USERS and EXCLUDED_IDS
-        member_rows = await pool.fetch("SELECT user_id, role FROM group_members")
-        for m in member_rows:
-            if m["role"] in ("admin", "manager"):
-                new_excluded_ids.add(m["user_id"])
-                # We could add to admin_users here if needed
 
         TG_NAME_MAP.clear()
         TG_NAME_MAP.update(new_tg_map)
@@ -110,7 +111,7 @@ async def load_chat_maps_from_db() -> None:
         VK_NAME_MAP.update(new_vk_map)
 
         ADMIN_USERS.clear()
-        ADMIN_USERS.update(new_admin_users)
+        ADMIN_USERS.update(final_admin_users)
 
         EXCLUDED_IDS.clear()
         EXCLUDED_IDS.update(new_excluded_ids)
