@@ -45,6 +45,7 @@ async def _log_duties_action(
 async def get_duties(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
+    group_id: int | None = None,
 ):
     now = datetime.now(MSK)
     date_str = now.strftime("%Y-%m-%d")
@@ -52,7 +53,12 @@ async def get_duties(
 
     if not ctx.groups_roles and not ctx.is_superadmin:
         return DutiesResponse(duties=[])
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    if group_id is None:
+        group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     duty_repo = DutyRepository(db)
     att_repo = AttendanceRepository(db)
@@ -130,9 +136,9 @@ async def assign_duties(
     settings = get_settings()
     duty_repo = DutyRepository(db)
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    group_id = data.group_id
+    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
 
     current_duties = await duty_repo.get_all(group_id)
     undo_data = []

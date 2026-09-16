@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { ApiClient } from '../api/client';
 import { toApiDate } from '../utils/date';
+import { useScheduleStore } from './schedule';
 import type { DutyStudent, DutiesResponse } from '../types/duty';
 
 export const useDutyStore = defineStore('duties', () => {
@@ -11,7 +12,6 @@ export const useDutyStore = defineStore('duties', () => {
   const loading = ref(false);
   const saving = ref(false);
 
-  // Initialize duty date as tomorrow by default
   function initDefaultDate() {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -22,9 +22,13 @@ export const useDutyStore = defineStore('duties', () => {
     if (!dutyDate.value) {
       initDefaultDate();
     }
+    const scheduleStore = useScheduleStore();
+    const groupId = scheduleStore.selectedGroupId;
+    const groupParam = groupId ? `?group_id=${groupId}` : '';
+    
     loading.value = true;
     try {
-      const res = await ApiClient.get<DutiesResponse>('/api/duties');
+      const res = await ApiClient.get<DutiesResponse>(`/api/duties${groupParam}`);
       duties.value = res.duties || [];
     } catch (e) {
       console.error('Failed to load duties', e);
@@ -44,10 +48,16 @@ export const useDutyStore = defineStore('duties', () => {
 
   async function saveDuties(): Promise<boolean> {
     if (!selectedStudentIds.value.length || !dutyDate.value) return false;
+    
+    const scheduleStore = useScheduleStore();
+    const groupId = scheduleStore.selectedGroupId;
+    if (!groupId) return false;
+    
     saving.value = true;
     try {
       await ApiClient.post('/api/duties/assign', {
         date: dutyDate.value,
+        group_id: groupId,
         student_ids: selectedStudentIds.value,
       });
       selectedStudentIds.value = [];
@@ -60,6 +70,7 @@ export const useDutyStore = defineStore('duties', () => {
       saving.value = false;
     }
   }
+
 
   return {
     dutyDate,

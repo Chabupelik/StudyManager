@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { ApiClient } from '../api/client';
-import { useGroupsStore } from './groups';
-import { useAuthStore } from './auth';
+
+import { useScheduleStore } from './schedule';
 import type { StudentStatsRow, StatsResponse, AbsenceRecord, StudentAbsencesResponse, SubjectStatRow, StudentSubjectStatsResponse } from '../types/stats';
 
 export type SortType = 'name' | 'month' | 'total';
@@ -61,12 +61,8 @@ export const useStatsStore = defineStore('stats', () => {
     const m = String(currentMonth.value.getMonth() + 1).padStart(2, '0');
 
     try {
-      const groupsStore = useGroupsStore();
-      const authStore = useAuthStore();
-      let groupId = groupsStore.activeGroupId;
-      if (!groupId && authStore.myGroups.length > 0) {
-        groupId = authStore.myGroups[0].id;
-      }
+      const scheduleStore = useScheduleStore();
+      const groupId = scheduleStore.selectedGroupId;
       const groupIdParam = groupId ? `&group_id=${groupId}` : '';
       const res = await ApiClient.get<StatsResponse>(`/api/stats?year=${y}&month=${m}${groupIdParam}`);
       stats.value = res.stats || [];

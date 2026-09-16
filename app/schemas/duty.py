@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class DutyAssignRequest(BaseModel):
     date: str
+    group_id: int
     student_ids: list[int]
 
 
