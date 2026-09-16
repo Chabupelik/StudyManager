@@ -367,7 +367,8 @@ async def update_member(
         member.role = body.role
 
     await session.flush()
-    await invalidate_user_permissions(redis, user_id)
+    if user.tg_user_id:
+        await invalidate_user_permissions(user.tg_user_id, redis)
 
     return MemberResponse(
         user_id=user.id,
