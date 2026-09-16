@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 BASE_SCHEDULES = {
-    1: [
+    2: [
         # 1 семестр
         {
             "day": 0,

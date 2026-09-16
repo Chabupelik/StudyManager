@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useScheduleStore } from '../stores/schedule';
 import { useAttendanceStore } from '../stores/attendance';
 import { useAuthStore } from '../stores/auth';
@@ -19,7 +19,17 @@ const uiStore = useUiStore();
 const showAddModal = ref(false);
 
 onMounted(() => {
+  if (authStore.myGroups.length > 0 && !scheduleStore.selectedGroupId) {
+    scheduleStore.selectedGroupId = authStore.myGroups[0].id;
+  }
   scheduleStore.loadSchedule();
+});
+
+watch(() => authStore.myGroups, (newGroups) => {
+  if (newGroups.length > 0 && !scheduleStore.selectedGroupId) {
+    scheduleStore.selectedGroupId = newGroups[0].id;
+    scheduleStore.loadSchedule();
+  }
 });
 
 function openDetails(lesson: any) {
@@ -77,7 +87,6 @@ function onTouchEnd(e: TouchEvent) {
           @change="scheduleStore.loadSchedule()"
           class="w-full bg-app-card border border-app-border rounded-xl px-3 py-2 text-sm text-app-text font-medium outline-none focus:border-app-accent transition-colors shadow-sm appearance-none cursor-pointer"
         >
-          <option :value="null">Основная группа (по умолчанию)</option>
           <option v-for="g in authStore.myGroups" :key="g.id" :value="g.id">
             Группа: {{ g.name }}
           </option>
