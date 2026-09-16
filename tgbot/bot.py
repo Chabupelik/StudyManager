@@ -36,23 +36,60 @@ load_dotenv()
 
 # --- CONFIG & SECRETS ---
 TOKEN = os.getenv("BOT_TOKEN")
-GROUP_ID = int(os.getenv("GROUP_ID", "0"))
 VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = int(os.getenv("VK_GROUP_ID", "0"))
-VK_CHAT_PEER_ID = int(os.getenv("VK_CHAT_PEER_ID", "0"))
 VK_API_VERSION = "5.199"
 
+# Legacy env fallback (used only if DB has no groups yet, or for test group)
+_ENV_GROUP_ID = int(os.getenv("GROUP_ID", "0"))
+_ENV_VK_CHAT_PEER_ID = int(os.getenv("VK_CHAT_PEER_ID", "0"))
 TEST_GROUP_ID = int(os.getenv("TEST_GROUP_ID", "0"))
 TEST_VK_CHAT_PEER_ID = int(os.getenv("TEST_VK_CHAT_PEER_ID", "0"))
 
-CHAT_MAP = {
-    VK_CHAT_PEER_ID: GROUP_ID,
-}
-if TEST_VK_CHAT_PEER_ID and TEST_GROUP_ID:
-    CHAT_MAP[TEST_VK_CHAT_PEER_ID] = TEST_GROUP_ID
+# These dicts are populated at startup by load_chat_maps_from_db().
+# Key: vk_peer_id  →  Value: tg_chat_id
+CHAT_MAP: dict[int, int] = {}
+# Key: tg_chat_id  →  Value: vk_peer_id
+REVERSE_CHAT_MAP: dict[int, int] = {}
 
-REVERSE_CHAT_MAP = {v: k for k, v in CHAT_MAP.items() if v != 0 and k != 0}
 PROCESSED_VK_MSGS = set()
+
+
+async def load_chat_maps_from_db() -> None:
+    """
+    Build CHAT_MAP / REVERSE_CHAT_MAP from the `groups` table.
+    Rows without both tg_chat_id and vk_peer_id are skipped.
+    Falls back to .env values if the DB returns nothing.
+    """
+    global CHAT_MAP, REVERSE_CHAT_MAP
+
+    new_map: dict[int, int] = {}
+    try:
+        pool = await get_db_pool()
+        rows = await pool.fetch(
+            "SELECT tg_chat_id, vk_peer_id FROM groups "
+            "WHERE tg_chat_id IS NOT NULL AND vk_peer_id IS NOT NULL"
+        )
+        for row in rows:
+            tg_id = row["tg_chat_id"]
+            vk_id = row["vk_peer_id"]
+            if tg_id and vk_id:
+                new_map[vk_id] = tg_id
+    except Exception as exc:
+        logging.warning("load_chat_maps_from_db failed: %s — using .env fallback", exc)
+
+    # .env fallback if nothing in DB
+    if not new_map and _ENV_VK_CHAT_PEER_ID and _ENV_GROUP_ID:
+        new_map[_ENV_VK_CHAT_PEER_ID] = _ENV_GROUP_ID
+
+    # Always include test group from env
+    if TEST_VK_CHAT_PEER_ID and TEST_GROUP_ID:
+        new_map[TEST_VK_CHAT_PEER_ID] = TEST_GROUP_ID
+
+    CHAT_MAP = new_map
+    REVERSE_CHAT_MAP = {v: k for k, v in CHAT_MAP.items()}
+    logging.info("Chat maps loaded: %d group(s)", len(CHAT_MAP))
+
 
 # PostgreSQL settings
 POSTGRES_USER = os.getenv("POSTGRES_USER", "studymanager")
@@ -444,7 +481,7 @@ class AsyncVKBridge:
         res = await self.api_call("users.get", {"user_ids": ids_str})
         return res.get("response", [])
 
-    async def send_message(self, text, peer_id=VK_CHAT_PEER_ID, attachment=""):
+    async def send_message(self, text, peer_id=_ENV_VK_CHAT_PEER_ID, attachment=""):
         params = {
             "peer_id": peer_id,
             "message": text,
@@ -1657,6 +1694,8 @@ async def main():
     logging.info("🚀 Запуск StudyManager Telegram Bot...")
     await get_db_pool()
     logging.info("✅ Подключение к PostgreSQL установлено")
+
+    await load_chat_maps_from_db()
 
     await bot.delete_webhook(drop_pending_updates=True)
     task_tg = asyncio.create_task(dp.start_polling(bot))

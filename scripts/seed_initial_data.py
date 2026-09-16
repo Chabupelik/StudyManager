@@ -42,10 +42,37 @@ STAFF_SEED: list[dict] = [
     {
         "name": "Виктория Александровна",
         "tg_id": 1331701095,
-        "vk_id": None,
+        "vk_id": 233661166,
         "role": "curator",
     },
 ]
+
+# VK IDs for students (supplement the tg-only students table)
+# vk_id=0 means the student has no VK account.
+STUDENT_VK_IDS: dict[int, int | None] = {
+    7610841443: 1046066591,  # Голубева Ольга
+    1693356589: 625235948,  # Жуков Ярослав
+    984245205: 503799617,  # Захарян Ангелина
+    7312085971: 493372683,  # Исаев Исамутдин
+    1145647467: 676760867,  # Калашникова Виктория
+    5209067734: 653464614,  # Крюкова Екатерина
+    1776233614: None,  # Лавренов Денис
+    786412327: 648972537,  # Лапкин Никита
+    1380783132: None,  # Леваев Денис
+    2036039791: 514896986,  # Малюта Кирилл
+    1426586903: 645040795,  # Манин Даниил
+    1590263622: 650095472,  # Нестеренко Артем
+    1816834428: None,  # Нестеренко Кирилл
+    1049352750: 536700773,  # Петровский Кирилл
+    5012979967: None,  # Половинкин Максим
+    1678240030: None,  # Попов Илья
+    620159705: None,  # Постнов Максим (разработчик)
+    1249491991: None,  # Резников Филипп
+    654109019: None,  # Скорик Глеб
+    6969927775: None,  # Филимонов Дмитрий
+    1329870096: None,  # Франк Никита
+    5273066461: None,  # Четвериков Вадим
+}
 
 # Role assignment logic (applied to students from the DB):
 #   DEVELOPER_ID       → headman + is_superadmin
@@ -55,7 +82,7 @@ HEADMAN_TG_ID: int = settings.developer_id  # 620159705 — Постнов Ма�
 DEPUTY_TG_IDS: set[int] = set(settings.admin_ids_list) - {HEADMAN_TG_ID}
 CURATOR_TG_IDS: set[int] = {1331701095}
 
-GROUP_NAME = "37АБД"
+GROUP_NAME = "37/2"
 
 
 # ---------------------------------------------------------------------------
@@ -192,11 +219,13 @@ async def seed() -> None:
                 tg_id = int(tg_id) if tg_id else None
                 role = _assign_role(tg_id)
                 is_super = tg_id == HEADMAN_TG_ID
+                vk_id = STUDENT_VK_IDS.get(tg_id) if tg_id else None
 
                 user_id = await upsert_user(
                     session,
                     full_name=name,
                     tg_id=tg_id,
+                    vk_id=vk_id,
                     is_superadmin=is_super,
                 )
                 await upsert_member(

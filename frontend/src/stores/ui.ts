@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { tg, triggerHaptic } from '../utils/telegram';
 
-export type ScreenTab = 'schedule' | 'details' | 'stats' | 'student-absences' | 'duties' | 'admin';
+export type ScreenTab = 'schedule' | 'details' | 'stats' | 'student-absences' | 'duties' | 'admin' | 'groups';
 
 export interface ToastMessage {
   id: number;

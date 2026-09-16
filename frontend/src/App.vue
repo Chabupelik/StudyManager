@@ -18,6 +18,7 @@ import StatsView from './views/StatsView.vue';
 import StudentAbsencesView from './views/StudentAbsencesView.vue';
 import DutiesView from './views/DutiesView.vue';
 import AdminView from './views/AdminView.vue';
+import GroupsView from './views/GroupsView.vue';
 
 const authStore = useAuthStore();
 const uiStore = useUiStore();
@@ -95,6 +96,8 @@ onUnmounted(() => {
                 ? StudentAbsencesView
                 : uiStore.activeScreen === 'duties'
                 ? DutiesView
+                : uiStore.activeScreen === 'groups'
+                ? GroupsView
                 : AdminView
             "
           />

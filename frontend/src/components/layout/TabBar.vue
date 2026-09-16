@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { useUiStore, type ScreenTab } from '../../stores/ui';
 import { useAuthStore } from '../../stores/auth';
-import { Calendar, BarChart3, Users, Shield } from 'lucide-vue-next';
+import { Calendar, BarChart3, Users, Shield, Building2 } from 'lucide-vue-next';
 
 const uiStore = useUiStore();
 const authStore = useAuthStore();
 
-const tabs: Array<{ id: ScreenTab; label: string; icon: any; adminOnly?: boolean }> = [
+const tabs: Array<{ id: ScreenTab; label: string; icon: any; adminOnly?: boolean; superAdminOnly?: boolean }> = [
   { id: 'schedule', label: 'Расписание', icon: Calendar },
   { id: 'stats', label: 'Статистика', icon: BarChart3 },
   { id: 'duties', label: 'Дежурства', icon: Users },
   { id: 'admin', label: 'Админка', icon: Shield, adminOnly: true },
+  { id: 'groups', label: 'Группы', icon: Building2, superAdminOnly: true },
 ];
 
 function isTabActive(tabId: ScreenTab): boolean {
@@ -27,7 +28,7 @@ function isTabActive(tabId: ScreenTab): boolean {
   >
     <template v-for="t in tabs" :key="t.id">
       <button
-        v-if="!t.adminOnly || authStore.isAdmin"
+        v-if="(!t.adminOnly || authStore.isAdmin) && (!t.superAdminOnly || authStore.isSuperAdmin)"
         class="flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150 relative select-none active:scale-95"
         @click="uiStore.switchTab(t.id)"
       >
