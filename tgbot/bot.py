@@ -183,7 +183,7 @@ async def notify_backend_duties():
 
 
 # --- ГЕНЕРАЦИЯ EXCEL ---
-async def generate_excel_report(year: str, month: str):
+async def generate_excel_report(year: str, month: str, group_id: int):
     y = int(year)
     m = int(month)
     month_prefix = f"{year}-{m:02d}-"
@@ -193,8 +193,9 @@ async def generate_excel_report(year: str, month: str):
 
     # Загружаем посещаемость
     att_rows = await pool.fetch(
-        "SELECT date, user_id, status FROM attendance WHERE date LIKE $1 AND status > 0 AND group_id = 2",
+        "SELECT date, user_id, status FROM attendance WHERE date LIKE $1 AND status > 0 AND group_id = $2",
         month_prefix + "%",
+        group_id,
     )
     data = {}
     for row in att_rows:
@@ -224,7 +225,7 @@ async def generate_excel_report(year: str, month: str):
             "WHERE s.group_id = $1 AND s.day_of_week = $2 "
             "AND (l.valid_from IS NULL OR l.valid_from <= $3) "
             "AND (l.valid_until IS NULL OR l.valid_until >= $3)",
-            2,
+            group_id,
             wday,
             datetime.strptime(date_str, "%Y-%m-%d").date(),
         )
@@ -350,7 +351,8 @@ async def generate_excel_report(year: str, month: str):
     day_totals = {d: 0 for d in range(1, last_day + 1)}
     pool = await get_db_pool()
     student_rows = await pool.fetch(
-        "SELECT u.id, u.full_name as name FROM users u JOIN group_members gm ON u.id = gm.user_id WHERE gm.role IN ('student', 'headman', 'deputy')"
+        "SELECT u.id, u.full_name as name FROM users u JOIN group_members gm ON u.id = gm.user_id WHERE gm.role IN ('student', 'headman', 'deputy') AND gm.group_id = $1",
+        group_id,
     )
     students_list = [dict(r) for r in student_rows]
 
@@ -1195,14 +1197,18 @@ async def handle_start(message: Message):
                 "⛔️ Только администраторы могут скачивать отчеты."
             )
         try:
-            _, year, month = args.split("_")
+            parts = args.split("_")
+            year = parts[1]
+            month = parts[2]
+            group_id = int(parts[3]) if len(parts) > 3 else 2
+
             if not (2020 < int(year) < 2030 and 0 < int(month) < 13):
                 raise ValueError()
             await message.answer("⏳ Формирую отчет... Пожалуйста, подождите.")
             await bot.send_chat_action(
                 chat_id=message.chat.id, action="upload_document"
             )
-            excel_file = await generate_excel_report(year, month)
+            excel_file = await generate_excel_report(year, month, group_id)
             filename = f"Ведомость_{year}_{month}.xlsx"
             document = BufferedInputFile(excel_file.getvalue(), filename=filename)
             await bot.send_document(

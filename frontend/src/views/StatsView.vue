@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useStatsStore } from '../stores/stats';
+import { useGroupsStore } from '../stores/groups';
 import { useAuthStore } from '../stores/auth';
 import { useUiStore } from '../stores/ui';
 import { formatMonthYear } from '../utils/date';
@@ -11,6 +12,7 @@ import SkeletonLoader from '../components/common/SkeletonLoader.vue';
 import { ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-vue-next';
 
 const statsStore = useStatsStore();
+const groupsStore = useGroupsStore();
 const authStore = useAuthStore();
 const uiStore = useUiStore();
 
@@ -29,7 +31,8 @@ function handleExportExcel() {
   const y = statsStore.currentMonth.getFullYear();
   const m = String(statsStore.currentMonth.getMonth() + 1).padStart(2, '0');
   const botUsername = 'manager_ems_bot';
-  const deepLink = `https://t.me/${botUsername}?start=report_${y}_${m}`;
+  const groupId = groupsStore.activeGroupId || 2;
+  const deepLink = `https://t.me/${botUsername}?start=report_${y}_${m}_${groupId}`;
 
   tg.openTelegramLink(deepLink);
   tg.showPopup({

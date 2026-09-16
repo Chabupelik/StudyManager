@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,18 +29,27 @@ async def get_stats(
     month: str,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
+    group_id: int | None = None,
 ):
     month_prefix = f"{year}-{month}-"
 
     if not ctx.groups_roles and not ctx.is_superadmin:
         return {"total_month_hours": 0, "total_lifetime_hours": 0, "stats": []}
-    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    if group_id is not None:
+        if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        target_group_id = group_id
+    else:
+        target_group_id = (
+            int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+        )
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    all_records = await att_repo.get_all_stats(group_id)
-    month_records = await att_repo.get_stats_for_month(group_id, month_prefix)
+    all_records = await att_repo.get_all_stats(target_group_id)
+    month_records = await att_repo.get_stats_for_month(target_group_id, month_prefix)
     overrides = await ovr_repo.get_all()
 
     aggregated = aggregate_student_stats(all_records, month_records)
