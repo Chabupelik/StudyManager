@@ -62,8 +62,8 @@ async def get_lesson_details(
     }
     all_day_att = await att_repo.get_for_date(group_id, date)
 
-    overrides = await ovr_repo.get_for_date(date)
-    base_times = get_base_times_for_date(date)
+    overrides = await ovr_repo.get_for_date(group_id, date)
+    base_times = get_base_times_for_date(group_id, date)
     active_times = compute_active_times(base_times, overrides)
 
     student_day_map: dict[int, dict[str, int]] = {}
@@ -145,18 +145,20 @@ async def update_attendance(
     )
 
     lesson_name = "Пара"
-    overrides = await ovr_repo.get_for_date(data.date)
+    overrides = await ovr_repo.get_for_date(group_id, data.date)
     ovr_map = {o.time: o for o in overrides}
     if data.time in ovr_map and ovr_map[data.time].new_name:
         lesson_name = ovr_map[data.time].new_name
     else:
         weekday = datetime.strptime(data.date, "%Y-%m-%d").weekday()
-        from app.data.schedule_data import BASE_SCHEDULE
+        from app.data.schedule_data import BASE_SCHEDULES
+
+        base_schedule = BASE_SCHEDULES.get(group_id, [])
 
         found = next(
             (
                 l["name"]
-                for l in BASE_SCHEDULE
+                for l in base_schedule
                 if l["day"] == weekday
                 and l["time"] == data.time
                 and l["start"] <= data.date <= l["end"]
@@ -214,8 +216,8 @@ async def update_attendance_day(
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    overrides = await ovr_repo.get_for_date(data.date)
-    base_times = get_base_times_for_date(data.date)
+    overrides = await ovr_repo.get_for_date(group_id, data.date)
+    base_times = get_base_times_for_date(group_id, data.date)
     active_times = compute_active_times(base_times, overrides)
 
     for t in active_times:

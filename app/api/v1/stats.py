@@ -44,8 +44,8 @@ async def get_stats(
     overrides = await ovr_repo.get_all()
 
     aggregated = aggregate_student_stats(all_records, month_records)
-    total_month_hours = compute_month_hours(int(year), int(month), overrides)
-    total_lifetime_hours = compute_lifetime_hours(overrides)
+    total_month_hours = compute_month_hours(group_id, int(year), int(month), overrides)
+    total_lifetime_hours = compute_lifetime_hours(group_id, overrides)
 
     stmt = (
         select(User)
@@ -118,12 +118,12 @@ async def get_student_absences(
                 get_base_times_for_date,
             )
 
-            base_times = get_base_times_for_date(d_str)
+            base_times = get_base_times_for_date(group_id, d_str)
             day_ovrs = [o for o in overrides if o.date == d_str]
             active = compute_active_times(base_times, day_ovrs)
             day_totals[d_str] = len(active) * 2
 
-        name, _ = get_subject_at(d_str, t_str, weekday, override_map)
+        name, _ = get_subject_at(group_id, d_str, t_str, weekday, override_map)
         if not name:
             name = "Доп. занятие"
 
@@ -162,5 +162,7 @@ async def get_student_subject_stats(
     absences = await att_repo.get_student_absences(group_id, student_id)
     overrides = await ovr_repo.get_all()
 
-    subjects = compute_subject_stats(student_id, absences, overrides, month_prefix)
+    subjects = compute_subject_stats(
+        group_id, student_id, absences, overrides, month_prefix
+    )
     return {"subjects": subjects}

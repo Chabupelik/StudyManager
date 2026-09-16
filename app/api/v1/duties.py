@@ -59,8 +59,8 @@ async def get_duties(
     ovr_repo = OverrideRepository(db)
 
     duties_map = await duty_repo.get_all(group_id)
-    overrides = await ovr_repo.get_for_date(date_str)
-    base_times = get_base_times_for_date(date_str)
+    overrides = await ovr_repo.get_for_date(group_id, date_str)
+    base_times = get_base_times_for_date(group_id, date_str)
     active_times = compute_active_times(base_times, overrides)
     sorted_times = sorted(active_times)
 
