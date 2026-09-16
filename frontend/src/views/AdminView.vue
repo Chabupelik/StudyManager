@@ -5,8 +5,9 @@ import { useUiStore } from '../stores/ui';
 import AdminOnlineCard from '../components/admin/AdminOnlineCard.vue';
 import LogFilters from '../components/admin/LogFilters.vue';
 import LogCard from '../components/admin/LogCard.vue';
+import ScheduleConstructor from '../components/admin/ScheduleConstructor.vue';
 import SkeletonLoader from '../components/common/SkeletonLoader.vue';
-import { RefreshCw, Shield, History } from 'lucide-vue-next';
+import { RefreshCw, Shield, History, CalendarDays } from 'lucide-vue-next';
 
 const adminStore = useAdminStore();
 const uiStore = useUiStore();
@@ -47,6 +48,15 @@ async function handleDeleteLog(id: number) {
             :admin="a"
           />
         </div>
+      </div>
+
+      <!-- Section 1.5: Schedule Constructor -->
+      <div class="premium-card rounded-2xl p-4 space-y-3">
+        <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider mb-2">
+          <CalendarDays class="w-3.5 h-3.5 text-purple-500" />
+          <span>Управление расписанием</span>
+        </div>
+        <ScheduleConstructor />
       </div>
 
       <!-- Section 2: Action Logs -->

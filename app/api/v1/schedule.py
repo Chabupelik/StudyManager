@@ -131,3 +131,173 @@ async def update_override(
     )
 
     return {"status": "ok"}
+
+
+@router.get("/base", response_model=list[dict])
+async def get_base_schedule(
+    group_id: int,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
+    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from sqlalchemy import select
+
+    from app.models.schedule_new import Lesson, Schedule
+
+    stmt = select(Schedule).where(Schedule.group_id == group_id)
+    schedules = (await db.execute(stmt)).scalars().all()
+
+    stmt_lessons = (
+        select(Lesson)
+        .join(Schedule)
+        .where(Schedule.group_id == group_id)
+        .order_by(Schedule.day_of_week, Lesson.start_time)
+    )
+    lessons = (await db.execute(stmt_lessons)).scalars().all()
+
+    res = []
+    for day in range(1, 8):
+        day_lessons = [
+            l
+            for l in lessons
+            if l.schedule_id in [s.id for s in schedules if s.day_of_week == day]
+        ]
+        res.append(
+            {
+                "day_of_week": day,
+                "lessons": [
+                    {
+                        "id": l.id,
+                        "lesson_number": l.lesson_number,
+                        "name": l.name,
+                        "teacher": l.teacher,
+                        "classroom": l.classroom,
+                        "start_time": l.start_time.strftime("%H:%M"),
+                        "end_time": l.end_time.strftime("%H:%M"),
+                        "valid_from": l.valid_from.strftime("%Y-%m-%d")
+                        if l.valid_from
+                        else None,
+                        "valid_until": l.valid_until.strftime("%Y-%m-%d")
+                        if l.valid_until
+                        else None,
+                    }
+                    for l in day_lessons
+                ],
+            }
+        )
+    return res
+
+
+@router.post("/base/{group_id}/{day_of_week}")
+async def create_base_lesson(
+    group_id: int,
+    day_of_week: int,
+    data: dict,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
+    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    from sqlalchemy import select
+
+    from app.models.schedule_new import Lesson, Schedule
+
+    stmt = select(Schedule).where(
+        Schedule.group_id == group_id, Schedule.day_of_week == day_of_week
+    )
+    schedule = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not schedule:
+        schedule = Schedule(group_id=group_id, day_of_week=day_of_week)
+        db.add(schedule)
+        await db.flush()
+
+    lesson = Lesson(
+        schedule_id=schedule.id,
+        lesson_number=data.get("lesson_number", 1),
+        name=data["name"],
+        teacher=data.get("teacher"),
+        classroom=data.get("classroom"),
+        start_time=datetime.strptime(data["start_time"], "%H:%M").time(),
+        end_time=datetime.strptime(data["end_time"], "%H:%M").time(),
+        valid_from=datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
+        if data.get("valid_from")
+        else None,
+        valid_until=datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
+        if data.get("valid_until")
+        else None,
+    )
+    db.add(lesson)
+    await db.commit()
+    return {"status": "ok", "id": lesson.id}
+
+
+@router.put("/base/lesson/{lesson_id}")
+async def update_base_lesson(
+    lesson_id: int,
+    data: dict,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.schedule_new import Lesson, Schedule
+
+    lesson = await db.get(Lesson, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    schedule = await db.get(Schedule, lesson.schedule_id)
+    if not ctx.is_superadmin and str(schedule.group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if "name" in data:
+        lesson.name = data["name"]
+    if "teacher" in data:
+        lesson.teacher = data["teacher"]
+    if "classroom" in data:
+        lesson.classroom = data["classroom"]
+    if "lesson_number" in data:
+        lesson.lesson_number = data["lesson_number"]
+    if "start_time" in data:
+        lesson.start_time = datetime.strptime(data["start_time"], "%H:%M").time()
+    if "end_time" in data:
+        lesson.end_time = datetime.strptime(data["end_time"], "%H:%M").time()
+
+    if "valid_from" in data:
+        lesson.valid_from = (
+            datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
+            if data["valid_from"]
+            else None
+        )
+    if "valid_until" in data:
+        lesson.valid_until = (
+            datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
+            if data["valid_until"]
+            else None
+        )
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/base/lesson/{lesson_id}")
+async def delete_base_lesson(
+    lesson_id: int,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.schedule_new import Lesson, Schedule
+
+    lesson = await db.get(Lesson, lesson_id)
+    if not lesson:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    schedule = await db.get(Schedule, lesson.schedule_id)
+    if not ctx.is_superadmin and str(schedule.group_id) not in ctx.groups_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    await db.delete(lesson)
+    await db.commit()
+    return {"status": "ok"}
