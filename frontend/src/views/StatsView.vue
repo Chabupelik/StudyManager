@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useStatsStore } from '../stores/stats';
-import { useGroupsStore } from '../stores/groups';
 import { useAuthStore } from '../stores/auth';
 import { useUiStore } from '../stores/ui';
+import { useScheduleStore } from '../stores/schedule';
 import { formatMonthYear } from '../utils/date';
 import { tg, triggerHaptic } from '../utils/telegram';
 import SortBar from '../components/stats/SortBar.vue';
@@ -12,13 +12,17 @@ import SkeletonLoader from '../components/common/SkeletonLoader.vue';
 import { ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-vue-next';
 
 const statsStore = useStatsStore();
-const groupsStore = useGroupsStore();
 const authStore = useAuthStore();
 const uiStore = useUiStore();
+const scheduleStore = useScheduleStore();
 
 const formattedMonth = computed(() => formatMonthYear(statsStore.currentMonth));
 
 onMounted(() => {
+  statsStore.loadStats();
+});
+
+watch(() => scheduleStore.selectedGroupId, () => {
   statsStore.loadStats();
 });
 
@@ -31,7 +35,7 @@ function handleExportExcel() {
   const y = statsStore.currentMonth.getFullYear();
   const m = String(statsStore.currentMonth.getMonth() + 1).padStart(2, '0');
   const botUsername = 'manager_ems_bot';
-  const groupId = groupsStore.activeGroupId || (authStore.myGroups.length > 0 ? authStore.myGroups[0].id : 2);
+  const groupId = scheduleStore.selectedGroupId || (authStore.myGroups.length > 0 ? authStore.myGroups[0].id : 2);
   const deepLink = `https://t.me/${botUsername}?start=report_${y}_${m}_${groupId}`;
 
   tg.openTelegramLink(deepLink);

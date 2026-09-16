@@ -3,6 +3,7 @@ import { onMounted } from 'vue';
 import { useDutyStore } from '../stores/duties';
 import { useAuthStore } from '../stores/auth';
 import { useUiStore } from '../stores/ui';
+import { useScheduleStore } from '../stores/schedule';
 import DutyStudentRow from '../components/duties/DutyStudentRow.vue';
 import SkeletonLoader from '../components/common/SkeletonLoader.vue';
 import { Save, Calendar } from 'lucide-vue-next';
@@ -10,10 +11,17 @@ import { Save, Calendar } from 'lucide-vue-next';
 const dutyStore = useDutyStore();
 const authStore = useAuthStore();
 const uiStore = useUiStore();
+const scheduleStore = useScheduleStore();
 
 onMounted(() => {
   dutyStore.loadDuties();
 });
+
+import { watch } from 'vue';
+watch(() => scheduleStore.selectedGroupId, () => {
+  dutyStore.loadDuties();
+});
+
 
 async function handleSaveDuties() {
   const ok = await dutyStore.saveDuties();
