@@ -712,6 +712,9 @@ class AsyncVKBridge:
                     for update in r.get("updates", []):
                         if update["type"] == "message_new":
                             msg = update["object"]["message"]
+                            logging.info(
+                                f"VK Message received: from_id={msg.get('from_id')}, peer_id={msg.get('peer_id')}, text={msg.get('text', '')[:20]}"
+                            )
                             if msg.get("from_id") == -VK_GROUP_ID:
                                 continue
 
@@ -1671,7 +1674,8 @@ async def process_tg_messages_to_vk(messages: list[Message], target_vk_peer: int
 
 
 @dp.message(
-    F.chat.id.func(lambda chat_id: chat_id in REVERSE_CHAT_MAP), ~F.text.startswith("/")
+    lambda message: message.chat and message.chat.id in REVERSE_CHAT_MAP,
+    lambda message: not (message.text and message.text.startswith("/")),
 )
 async def tg_to_vk_handler(message: Message):
     if message.from_user.is_bot:
@@ -1698,7 +1702,7 @@ async def tg_to_vk_handler(message: Message):
         await process_tg_messages_to_vk([message], target_vk_peer)
 
 
-@dp.edited_message(F.chat.id.func(lambda chat_id: chat_id in REVERSE_CHAT_MAP))
+@dp.edited_message(lambda message: message.chat and message.chat.id in REVERSE_CHAT_MAP)
 async def tg_edit_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
