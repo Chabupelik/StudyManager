@@ -52,6 +52,7 @@ class MemberResponse(BaseModel):
     user_id: int
     full_name: str
     tg_user_id: int | None
+    vk_user_id: int | None
     role: str
 
 
@@ -83,6 +84,54 @@ async def create_group(
         vk_peer_id=body.vk_peer_id,
     )
     session.add(group)
+    await session.flush()
+    return GroupResponse(
+        id=group.id,
+        name=group.name,
+        tg_chat_id=group.tg_chat_id,
+        vk_peer_id=group.vk_peer_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PUT /groups/{group_id} — update a group (superadmin only)
+# ---------------------------------------------------------------------------
+
+
+class GroupUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=50)
+    tg_chat_id: int | None = None
+    vk_peer_id: int | None = None
+
+
+@router.put("/{group_id}", response_model=GroupResponse)
+async def update_group(
+    group_id: int,
+    body: GroupUpdateRequest,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> GroupResponse:
+    """Update study group details. Requires superadmin."""
+    if not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Superadmin required")
+
+    group = await session.get(Group, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    if body.name is not None and body.name != group.name:
+        existing = await session.execute(select(Group).where(Group.name == body.name))
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409, detail=f"Group '{body.name}' already exists"
+            )
+        group.name = body.name
+
+    if body.tg_chat_id is not None:
+        group.tg_chat_id = body.tg_chat_id
+    if body.vk_peer_id is not None:
+        group.vk_peer_id = body.vk_peer_id
+
     await session.flush()
     return GroupResponse(
         id=group.id,
@@ -166,6 +215,7 @@ async def list_members(
             user_id=user.id,
             full_name=user.full_name,
             tg_user_id=user.tg_user_id,
+            vk_user_id=user.vk_user_id,
             role=member.role,
         )
         for user, member in rows.all()
@@ -258,6 +308,72 @@ async def add_member(
         user_id=user.id,
         full_name=user.full_name,
         tg_user_id=user.tg_user_id,
+        vk_user_id=user.vk_user_id,
+        role=member.role,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PUT /groups/{group_id}/members/{user_id} — edit a member
+# ---------------------------------------------------------------------------
+
+
+class UpdateMemberRequest(BaseModel):
+    full_name: str | None = Field(None, min_length=1, max_length=255)
+    tg_user_id: int | None = None
+    vk_user_id: int | None = None
+    role: MemberRole | None = None
+
+
+@router.put("/{group_id}/members/{user_id}", response_model=MemberResponse)
+async def update_member(
+    group_id: int,
+    user_id: int,
+    body: UpdateMemberRequest,
+    ctx: Annotated[
+        UserPermissionContext,
+        Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+) -> MemberResponse:
+    """
+    Update an existing user's details and/or their role in the group.
+    Requires headman or curator role in the target group.
+    """
+    # 1. Verify membership
+    result = await session.execute(
+        select(GroupMember).where(
+            GroupMember.user_id == user_id, GroupMember.group_id == group_id
+        )
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found in group")
+
+    # 2. Get User
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 3. Update fields
+    if body.full_name is not None:
+        user.full_name = body.full_name
+    if body.tg_user_id is not None:
+        user.tg_user_id = body.tg_user_id
+    if body.vk_user_id is not None:
+        user.vk_user_id = body.vk_user_id
+    if body.role is not None:
+        member.role = body.role
+
+    await session.flush()
+    await invalidate_user_permissions(redis, user_id)
+
+    return MemberResponse(
+        user_id=user.id,
+        full_name=user.full_name,
+        tg_user_id=user.tg_user_id,
+        vk_user_id=user.vk_user_id,
         role=member.role,
     )
 

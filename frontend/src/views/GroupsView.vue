@@ -8,6 +8,7 @@ import {
   Users,
   Plus,
   Trash2,
+  Edit2,
   Crown,
   Star,
   GraduationCap,
@@ -25,16 +26,22 @@ const isSuperAdmin = authStore.isSuperAdmin;
 
 // Modals
 const showCreateGroup = ref(false);
+const showEditGroup = ref(false);
 const showAddMember = ref(false);
+const showEditMember = ref(false);
 const confirmDeleteUserId = ref<number | null>(null);
 
-// Form state
+// Form state - Create Group
 const newGroupName = ref('');
 const newGroupTgId = ref<string>('');
 const newGroupVkId = ref<string>('');
-const newMemberName = ref('');
-const newMemberTgId = ref<string>('');
-const newMemberRole = ref<AddMemberBody['role']>('student');
+
+// Form state - Add/Edit Member
+const memberFormUserId = ref<number | null>(null);
+const memberFormName = ref('');
+const memberFormTgId = ref<string>('');
+const memberFormVkId = ref<string>('');
+const memberFormRole = ref<AddMemberBody['role']>('student');
 const formError = ref('');
 const submitting = ref(false);
 
@@ -80,8 +87,24 @@ function roleBadgeClass(role: string): string {
   }
 }
 
-// ── Create Group ─────────────────────────────────────────────────────────────
-async function submitCreateGroup() {
+// ── Create/Edit Group ────────────────────────────────────────────────────────
+function openCreateGroup() {
+  newGroupName.value = '';
+  newGroupTgId.value = '';
+  newGroupVkId.value = '';
+  formError.value = '';
+  showCreateGroup.value = true;
+}
+
+function openEditGroup(g: any) {
+  newGroupName.value = g.name;
+  newGroupTgId.value = g.tg_chat_id ? String(g.tg_chat_id) : '';
+  newGroupVkId.value = g.vk_peer_id ? String(g.vk_peer_id) : '';
+  formError.value = '';
+  showEditGroup.value = true;
+}
+
+async function submitGroupForm() {
   if (!newGroupName.value.trim()) {
     formError.value = 'Введите название группы';
     return;
@@ -89,48 +112,89 @@ async function submitCreateGroup() {
   submitting.value = true;
   formError.value = '';
   try {
-    await groupsStore.createGroup({
-      name: newGroupName.value.trim(),
-      tg_chat_id: newGroupTgId.value ? Number(newGroupTgId.value) : null,
-      vk_peer_id: newGroupVkId.value ? Number(newGroupVkId.value) : null,
-    });
-    showCreateGroup.value = false;
+    if (showEditGroup.value) {
+      await groupsStore.updateGroup({
+        name: newGroupName.value.trim(),
+        tg_chat_id: newGroupTgId.value ? Number(newGroupTgId.value) : null,
+        vk_peer_id: newGroupVkId.value ? Number(newGroupVkId.value) : null,
+      });
+      showEditGroup.value = false;
+      uiStore.showToast('Группа обновлена', 'success');
+    } else {
+      await groupsStore.createGroup({
+        name: newGroupName.value.trim(),
+        tg_chat_id: newGroupTgId.value ? Number(newGroupTgId.value) : null,
+        vk_peer_id: newGroupVkId.value ? Number(newGroupVkId.value) : null,
+      });
+      showCreateGroup.value = false;
+      uiStore.showToast('Группа создана', 'success');
+    }
     newGroupName.value = '';
     newGroupTgId.value = '';
     newGroupVkId.value = '';
-    uiStore.showToast(`Группа создана`, 'success');
   } catch (e: any) {
-    formError.value = e.message || 'Ошибка создания группы';
+    formError.value = e.message || 'Ошибка сохранения';
   } finally {
     submitting.value = false;
   }
 }
 
-// ── Add Member ───────────────────────────────────────────────────────────────
-async function submitAddMember() {
-  if (!newMemberName.value.trim()) {
+// ── Add/Edit Member ────────────────────────────────────────────────────────
+function openAddMember() {
+  memberFormUserId.value = null;
+  memberFormName.value = '';
+  memberFormTgId.value = '';
+  memberFormVkId.value = '';
+  memberFormRole.value = 'student';
+  formError.value = '';
+  showAddMember.value = true;
+}
+
+function openEditMember(m: any) {
+  memberFormUserId.value = m.user_id;
+  memberFormName.value = m.full_name;
+  memberFormTgId.value = m.tg_user_id ? String(m.tg_user_id) : '';
+  memberFormVkId.value = m.vk_user_id ? String(m.vk_user_id) : '';
+  memberFormRole.value = m.role;
+  formError.value = '';
+  showEditMember.value = true;
+}
+
+async function submitMemberForm() {
+  if (!memberFormName.value.trim()) {
     formError.value = 'Введите имя';
     return;
   }
-  if (!newMemberTgId.value) {
-    formError.value = 'Введите Telegram ID';
+  if (!memberFormTgId.value && !memberFormVkId.value) {
+    formError.value = 'Введите Telegram ID или VK ID';
     return;
   }
   submitting.value = true;
   formError.value = '';
   try {
-    await groupsStore.addMember({
-      full_name: newMemberName.value.trim(),
-      tg_user_id: Number(newMemberTgId.value),
-      role: newMemberRole.value,
-    });
-    showAddMember.value = false;
-    newMemberName.value = '';
-    newMemberTgId.value = '';
-    newMemberRole.value = 'student';
-    uiStore.showToast('Участник добавлен', 'success');
+    if (memberFormUserId.value) {
+      // Edit
+      await groupsStore.updateMember(memberFormUserId.value, {
+        full_name: memberFormName.value.trim(),
+        tg_user_id: memberFormTgId.value ? Number(memberFormTgId.value) : null,
+        vk_user_id: memberFormVkId.value ? Number(memberFormVkId.value) : null,
+        role: memberFormRole.value,
+      });
+      uiStore.showToast('Участник обновлён', 'success');
+      showEditMember.value = false;
+    } else {
+      // Add
+      await groupsStore.addMember({
+        full_name: memberFormName.value.trim(),
+        tg_user_id: memberFormTgId.value ? Number(memberFormTgId.value) : null,
+        vk_user_id: memberFormVkId.value ? Number(memberFormVkId.value) : null,
+        role: memberFormRole.value,
+      });
+      uiStore.showToast('Участник добавлен', 'success');
+      showAddMember.value = false;
+    }
   } catch (e: any) {
-    formError.value = e.message || 'Ошибка добавления';
+    formError.value = e.message || 'Ошибка сохранения';
   } finally {
     submitting.value = false;
   }
@@ -163,7 +227,7 @@ async function doRemove() {
         v-if="isSuperAdmin"
         class="p-1.5 rounded-lg hover:bg-slate-200/40 dark:hover:bg-slate-800 transition-all"
         title="Создать группу"
-        @click="showCreateGroup = true; formError = ''"
+        @click="openCreateGroup"
       >
         <Plus class="w-4 h-4 text-app-accent" />
       </button>
@@ -189,7 +253,7 @@ async function doRemove() {
         <button
           v-if="isSuperAdmin"
           class="mt-4 px-4 py-2 rounded-xl bg-app-accent text-white text-xs font-bold hover:brightness-110 active:scale-95 transition-all"
-          @click="showCreateGroup = true; formError = ''"
+          @click="openCreateGroup"
         >
           Создать группу
         </button>
@@ -213,9 +277,19 @@ async function doRemove() {
 
         <!-- Active Group Info Card -->
         <div v-if="groupsStore.activeGroup()" class="premium-card rounded-2xl p-4 space-y-2">
-          <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider mb-1">
-            <Building2 class="w-3.5 h-3.5 text-app-accent" />
-            <span>{{ groupsStore.activeGroup()!.name }}</span>
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider">
+              <Building2 class="w-3.5 h-3.5 text-app-accent" />
+              <span>{{ groupsStore.activeGroup()!.name }}</span>
+            </div>
+            <button
+              v-if="isSuperAdmin"
+              class="p-1 rounded-lg text-app-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+              title="Редактировать группу"
+              @click="openEditGroup(groupsStore.activeGroup()!)"
+            >
+              <Edit2 class="w-3.5 h-3.5" />
+            </button>
           </div>
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="bg-app-canvas rounded-xl p-2.5">
@@ -243,7 +317,7 @@ async function doRemove() {
             <button
               v-if="isSuperAdmin"
               class="flex items-center gap-1 text-xs font-bold text-app-accent hover:brightness-110 transition-all"
-              @click="showAddMember = true; formError = ''"
+              @click="openAddMember"
             >
               <Plus class="w-3.5 h-3.5" />
               Добавить
@@ -281,20 +355,33 @@ async function doRemove() {
                 </span>
               </div>
 
-              <!-- TG ID -->
-              <span v-if="m.tg_user_id" class="text-[10px] text-app-muted font-mono hidden sm:block">
-                {{ m.tg_user_id }}
-              </span>
+              <!-- IDs -->
+              <div class="hidden sm:flex flex-col gap-0.5 text-right ml-auto px-2">
+                <span v-if="m.tg_user_id" class="text-[10px] text-[#3390ec] font-mono whitespace-nowrap" title="TG ID">
+                  tg: {{ m.tg_user_id }}
+                </span>
+                <span v-if="m.vk_user_id" class="text-[10px] text-[#0077FF] font-mono whitespace-nowrap" title="VK ID">
+                  vk: {{ m.vk_user_id }}
+                </span>
+              </div>
 
-              <!-- Remove button -->
-              <button
-                v-if="isSuperAdmin"
-                class="p-1.5 rounded-lg text-app-muted hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
-                title="Удалить из группы"
-                @click="confirmRemove(m.user_id)"
-              >
-                <Trash2 class="w-3.5 h-3.5" />
-              </button>
+              <!-- Actions -->
+              <div v-if="isSuperAdmin" class="flex items-center gap-1 flex-shrink-0 ml-auto sm:ml-0">
+                <button
+                  class="p-1.5 rounded-lg text-app-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+                  title="Редактировать участника"
+                  @click="openEditMember(m)"
+                >
+                  <Edit2 class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  class="p-1.5 rounded-lg text-app-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+                  title="Удалить из группы"
+                  @click="confirmRemove(m.user_id)"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             <div v-if="groupsStore.members.length === 0" class="text-center py-6 text-app-muted text-xs">
@@ -305,17 +392,19 @@ async function doRemove() {
       </template>
     </div>
 
-    <!-- ── Modal: Create Group ──────────────────────────────────────────── -->
+    <!-- ── Modal: Create/Edit Group ─────────────────────────────────────── -->
     <Teleport to="body">
       <div
-        v-if="showCreateGroup"
+        v-if="showCreateGroup || showEditGroup"
         class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
-        @click.self="showCreateGroup = false"
+        @click.self="showCreateGroup = false; showEditGroup = false"
       >
         <div class="w-full max-w-lg bg-app-card rounded-t-3xl p-6 pb-[calc(1.5rem+var(--safe-bottom))] space-y-4 shadow-2xl">
           <div class="flex items-center justify-between">
-            <h2 class="text-base font-extrabold text-app-text">Новая группа</h2>
-            <button class="p-1.5 rounded-lg hover:bg-slate-200/40 dark:hover:bg-slate-800" @click="showCreateGroup = false">
+            <h2 class="text-base font-extrabold text-app-text">
+              {{ showEditGroup ? 'Редактировать группу' : 'Новая группа' }}
+            </h2>
+            <button class="p-1.5 rounded-lg hover:bg-slate-200/40 dark:hover:bg-slate-800" @click="showCreateGroup = false; showEditGroup = false">
               <X class="w-4 h-4 text-app-muted" />
             </button>
           </div>
@@ -346,42 +435,52 @@ async function doRemove() {
           <button
             class="w-full py-3 rounded-2xl bg-app-accent text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all disabled:opacity-50"
             :disabled="submitting"
-            @click="submitCreateGroup"
+            @click="submitGroupForm"
           >
-            {{ submitting ? 'Создаём...' : 'Создать группу' }}
+            {{ submitting ? 'Сохраняем...' : 'Сохранить' }}
           </button>
         </div>
       </div>
     </Teleport>
 
-    <!-- ── Modal: Add Member ────────────────────────────────────────────── -->
+    <!-- ── Modal: Add/Edit Member ───────────────────────────────────────── -->
     <Teleport to="body">
       <div
-        v-if="showAddMember"
+        v-if="showAddMember || showEditMember"
         class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
-        @click.self="showAddMember = false"
+        @click.self="showAddMember = false; showEditMember = false"
       >
         <div class="w-full max-w-lg bg-app-card rounded-t-3xl p-6 pb-[calc(1.5rem+var(--safe-bottom))] space-y-4 shadow-2xl">
           <div class="flex items-center justify-between">
-            <h2 class="text-base font-extrabold text-app-text">Добавить участника</h2>
-            <button class="p-1.5 rounded-lg hover:bg-slate-200/40 dark:hover:bg-slate-800" @click="showAddMember = false">
+            <h2 class="text-base font-extrabold text-app-text">
+              {{ showEditMember ? 'Редактировать участника' : 'Добавить участника' }}
+            </h2>
+            <button class="p-1.5 rounded-lg hover:bg-slate-200/40 dark:hover:bg-slate-800" @click="showAddMember = false; showEditMember = false">
               <X class="w-4 h-4 text-app-muted" />
             </button>
           </div>
 
           <div class="space-y-3">
             <input
-              v-model="newMemberName"
+              v-model="memberFormName"
               type="text"
               placeholder="Фамилия Имя"
               class="w-full bg-app-canvas border border-app-border rounded-xl px-3.5 py-2.5 text-sm text-app-text placeholder:text-app-muted outline-none focus:border-app-accent transition-colors"
             />
-            <input
-              v-model="newMemberTgId"
-              type="number"
-              placeholder="Telegram ID"
-              class="w-full bg-app-canvas border border-app-border rounded-xl px-3.5 py-2.5 text-sm text-app-text placeholder:text-app-muted outline-none focus:border-app-accent transition-colors"
-            />
+            <div class="grid grid-cols-2 gap-3">
+              <input
+                v-model="memberFormTgId"
+                type="number"
+                placeholder="Telegram ID"
+                class="w-full bg-app-canvas border border-app-border rounded-xl px-3.5 py-2.5 text-sm text-app-text placeholder:text-app-muted outline-none focus:border-app-accent transition-colors"
+              />
+              <input
+                v-model="memberFormVkId"
+                type="number"
+                placeholder="VK ID"
+                class="w-full bg-app-canvas border border-app-border rounded-xl px-3.5 py-2.5 text-sm text-app-text placeholder:text-app-muted outline-none focus:border-app-accent transition-colors"
+              />
+            </div>
 
             <!-- Role selector -->
             <div class="grid grid-cols-4 gap-1.5">
@@ -389,10 +488,10 @@ async function doRemove() {
                 v-for="r in ['student', 'deputy', 'headman', 'curator'] as const"
                 :key="r"
                 class="py-2 rounded-xl text-[11px] font-bold border transition-all"
-                :class="newMemberRole === r
+                :class="memberFormRole === r
                   ? roleBadgeClass(r) + ' scale-105 shadow'
                   : 'bg-app-canvas border-app-border text-app-muted'"
-                @click="newMemberRole = r"
+                @click="memberFormRole = r"
               >
                 {{ roleLabel[r] }}
               </button>
@@ -404,9 +503,9 @@ async function doRemove() {
           <button
             class="w-full py-3 rounded-2xl bg-app-accent text-white font-bold text-sm hover:brightness-110 active:scale-98 transition-all disabled:opacity-50"
             :disabled="submitting"
-            @click="submitAddMember"
+            @click="submitMemberForm"
           >
-            {{ submitting ? 'Добавляем...' : 'Добавить' }}
+            {{ submitting ? 'Сохраняем...' : 'Сохранить' }}
           </button>
         </div>
       </div>

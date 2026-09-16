@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { GroupsApi, type Group, type Member, type AddMemberBody, type CreateGroupBody } from '../api/groups';
+import { GroupsApi, type Group, type Member, type AddMemberBody, type UpdateMemberBody, type CreateGroupBody, type UpdateGroupBody } from '../api/groups';
 
 export const useGroupsStore = defineStore('groups', () => {
   const groups = ref<Group[]>([]);
@@ -54,6 +54,16 @@ export const useGroupsStore = defineStore('groups', () => {
     return group;
   }
 
+  async function updateGroup(body: UpdateGroupBody): Promise<Group | void> {
+    if (!activeGroupId.value) return;
+    const group = await GroupsApi.updateGroup(activeGroupId.value, body);
+    const idx = groups.value.findIndex((g) => g.id === group.id);
+    if (idx >= 0) {
+      groups.value[idx] = group;
+    }
+    return group;
+  }
+
   async function addMember(body: AddMemberBody): Promise<void> {
     if (!activeGroupId.value) return;
     const member = await GroupsApi.addMember(activeGroupId.value, body);
@@ -63,6 +73,15 @@ export const useGroupsStore = defineStore('groups', () => {
       members.value[idx] = member;
     } else {
       members.value.push(member);
+    }
+  }
+
+  async function updateMember(userId: number, body: UpdateMemberBody): Promise<void> {
+    if (!activeGroupId.value) return;
+    const member = await GroupsApi.updateMember(activeGroupId.value, userId, body);
+    const idx = members.value.findIndex((m) => m.user_id === member.user_id);
+    if (idx >= 0) {
+      members.value[idx] = member;
     }
   }
 
@@ -84,7 +103,9 @@ export const useGroupsStore = defineStore('groups', () => {
     selectGroup,
     loadMembers,
     createGroup,
+    updateGroup,
     addMember,
+    updateMember,
     removeMember,
   };
 });

@@ -91,6 +91,10 @@ export class ApiClient {
     return this.request<T>(url, { method: 'POST', body, headers });
   }
 
+  public static put<T = any>(url: string, body?: any, headers?: Record<string, string>): Promise<T> {
+    return this.request<T>(url, { method: 'PUT', body, headers });
+  }
+
   public static delete<T = any>(url: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>(url, { method: 'DELETE', headers });
   }
