@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useGroupsStore } from '../stores/groups';
 import { useAuthStore } from '../stores/auth';
 import { useUiStore } from '../stores/ui';
@@ -16,6 +16,8 @@ import {
   RefreshCw,
   X,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-vue-next';
 import type { AddMemberBody } from '../api/groups';
 import ScheduleConstructor from '../components/admin/ScheduleConstructor.vue';
@@ -24,7 +26,9 @@ const groupsStore = useGroupsStore();
 const authStore = useAuthStore();
 const uiStore = useUiStore();
 
-const isSuperAdmin = authStore.isSuperAdmin;
+const isSuperAdmin = computed(() => authStore.effectiveRole === 'super');
+
+const showSchedule = ref(false);
 
 // Modals
 const showCreateGroup = ref(false);
@@ -338,15 +342,6 @@ async function doDeleteGroup() {
           </div>
         </div>
 
-        <!-- Schedule Section -->
-        <div v-if="isSuperAdmin" class="premium-card rounded-2xl p-4 space-y-3">
-          <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider mb-2">
-            <CalendarDays class="w-3.5 h-3.5 text-purple-500" />
-            <span>Расписание группы</span>
-          </div>
-          <ScheduleConstructor :groupId="groupsStore.activeGroup()!.id" />
-        </div>
-
         <!-- Members Section -->
         <div class="premium-card rounded-2xl p-4 space-y-3">
           <div class="flex items-center justify-between">
@@ -427,6 +422,27 @@ async function doDeleteGroup() {
             <div v-if="groupsStore.members.length === 0" class="text-center py-6 text-app-muted text-xs">
               В группе нет участников
             </div>
+          </div>
+        </div>
+
+        <!-- Schedule Section -->
+        <div v-if="isSuperAdmin" class="premium-card rounded-2xl p-4 space-y-3">
+          <button 
+            class="w-full flex items-center justify-between text-left"
+            @click="showSchedule = !showSchedule"
+          >
+            <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider">
+              <CalendarDays class="w-3.5 h-3.5 text-purple-500" />
+              <span>Расписание группы</span>
+            </div>
+            <div class="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-app-muted">
+              <ChevronUp v-if="showSchedule" class="w-4 h-4" />
+              <ChevronDown v-else class="w-4 h-4" />
+            </div>
+          </button>
+          
+          <div v-if="showSchedule" class="mt-4 border-t border-app-border pt-4">
+            <ScheduleConstructor :groupId="groupsStore.activeGroup()!.id" />
           </div>
         </div>
       </template>
