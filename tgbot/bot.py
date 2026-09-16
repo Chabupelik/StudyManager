@@ -345,7 +345,7 @@ async def generate_excel_report(year: str, month: str):
     day_totals = {d: 0 for d in range(1, last_day + 1)}
     pool = await get_db_pool()
     student_rows = await pool.fetch(
-        "SELECT u.id, u.full_name as name FROM users u JOIN group_members gm ON u.id = gm.user_id WHERE gm.role = 'student'"
+        "SELECT u.id, u.full_name as name FROM users u JOIN group_members gm ON u.id = gm.user_id WHERE gm.role IN ('student', 'headman', 'deputy')"
     )
     students_list = [dict(r) for r in student_rows]
 

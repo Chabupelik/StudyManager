@@ -99,7 +99,7 @@ async def get_init(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
 ):
     if not ctx.groups_roles and not ctx.is_superadmin:
-        raise HTTPException(status_code=403, detail="Access denied: Not in any group")
+        raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
 
     settings = get_settings()
     return {
