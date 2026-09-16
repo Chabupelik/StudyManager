@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Lesson } from '../../types/schedule';
 import MarqueeText from '../common/MarqueeText.vue';
-import { ChevronRight, User, CheckCircle2, AlertCircle, MapPin } from 'lucide-vue-next';
+import { ChevronRight, User, CheckCircle2, AlertCircle } from 'lucide-vue-next';
 
 defineProps<{
   lesson: Lesson;
@@ -53,7 +53,6 @@ function getEndTime(startTime: string, name: string): string {
         v-if="lesson.classroom"
         class="flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400 w-full mt-0.5"
       >
-        <MapPin class="w-[11px] h-[11px] text-app-accent opacity-80" />
         <span class="text-[9.5px] font-bold leading-tight tracking-tight text-center break-words w-full px-0.5">
           Каб. {{ lesson.classroom }}
         </span>
