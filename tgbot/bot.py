@@ -40,11 +40,6 @@ VK_TOKEN = os.getenv("VK_TOKEN")
 VK_GROUP_ID = int(os.getenv("VK_GROUP_ID", "0"))
 VK_API_VERSION = "5.199"
 
-# Legacy env fallback (used only if DB has no groups yet, or for test group)
-_ENV_GROUP_ID = int(os.getenv("GROUP_ID", "0"))
-_ENV_VK_CHAT_PEER_ID = int(os.getenv("VK_CHAT_PEER_ID", "0"))
-TEST_GROUP_ID = int(os.getenv("TEST_GROUP_ID", "0"))
-TEST_VK_CHAT_PEER_ID = int(os.getenv("TEST_VK_CHAT_PEER_ID", "0"))
 
 # These dicts are populated at startup by load_chat_maps_from_db().
 # Key: vk_peer_id  →  Value: tg_chat_id
@@ -78,18 +73,53 @@ async def load_chat_maps_from_db() -> None:
     except Exception as exc:
         logging.warning("load_chat_maps_from_db failed: %s — using .env fallback", exc)
 
-    # .env fallback if nothing in DB
-    if not new_map and _ENV_VK_CHAT_PEER_ID and _ENV_GROUP_ID:
-        new_map[_ENV_VK_CHAT_PEER_ID] = _ENV_GROUP_ID
-
-    # Always include test group from env
-    if TEST_VK_CHAT_PEER_ID and TEST_GROUP_ID:
-        new_map[TEST_VK_CHAT_PEER_ID] = TEST_GROUP_ID
+    # Legacy .env fallback removed as it interferes with DB values.
 
     CHAT_MAP.clear()
     CHAT_MAP.update(new_map)
     REVERSE_CHAT_MAP.clear()
     REVERSE_CHAT_MAP.update({v: k for k, v in CHAT_MAP.items()})
+
+    try:
+        pool = await get_db_pool()
+        user_rows = await pool.fetch(
+            "SELECT id, tg_user_id, vk_user_id, full_name, is_superadmin FROM users"
+        )
+
+        new_tg_map = {}
+        new_vk_map = {}
+        new_admin_users = set()
+        new_excluded_ids = set()
+
+        for u in user_rows:
+            if u["tg_user_id"]:
+                new_tg_map[u["tg_user_id"]] = u["full_name"]
+            if u["vk_user_id"]:
+                new_vk_map[u["vk_user_id"]] = u["full_name"]
+            if u["is_superadmin"]:
+                new_admin_users.add(u["tg_user_id"])
+
+        # Also fetch group roles to update ADMIN_USERS and EXCLUDED_IDS
+        member_rows = await pool.fetch("SELECT user_id, role FROM group_members")
+        for m in member_rows:
+            if m["role"] in ("admin", "manager"):
+                new_excluded_ids.add(m["user_id"])
+                # We could add to admin_users here if needed
+
+        TG_NAME_MAP.clear()
+        TG_NAME_MAP.update(new_tg_map)
+        VK_NAME_MAP.clear()
+        VK_NAME_MAP.update(new_vk_map)
+
+        ADMIN_USERS.clear()
+        ADMIN_USERS.update(new_admin_users)
+
+        EXCLUDED_IDS.clear()
+        EXCLUDED_IDS.update(new_excluded_ids)
+
+    except Exception as exc:
+        logging.warning("Failed to fetch users from db: %s", exc)
+
     logging.info(f"Chat maps loaded: {len(CHAT_MAP)} group(s). Contents: {CHAT_MAP}")
 
 
@@ -109,8 +139,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "studymanager_db")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
-
-
+MSK = pytz.timezone("Europe/Moscow")
 # Database Pool
 db_pool: asyncpg.Pool | None = None
 
@@ -135,51 +164,11 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-ADMIN_IDS_RAW = os.getenv("ADMIN_IDS", "620159705,1331701095,5273066461,1049352750")
-ADMIN_USERS = {int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdigit()}
-EXCLUDED_IDS = {14, 17, 22}
+ADMIN_USERS = set()
+EXCLUDED_IDS = set()
 
-MSK = pytz.timezone("Europe/Moscow")
-
-STAFF = [
-    {
-        "id": 100,
-        "name": "Виктория Александровна",
-        "tg_id": 1331701095,
-        "vk_id": 233661166,
-    }
-]
-
-STUDENTS = [
-    {"id": 1, "name": "Голубева Ольга", "tg_id": 7610841443, "vk_id": 1046066591},
-    {"id": 2, "name": "Жуков Ярослав", "tg_id": 1693356589, "vk_id": 625235948},
-    {"id": 3, "name": "Захарян Ангелина", "tg_id": 984245205, "vk_id": 503799617},
-    {"id": 4, "name": "Исаев Исамутдин", "tg_id": 7312085971, "vk_id": 493372683},
-    {"id": 5, "name": "Калашникова Виктория", "tg_id": 1145647467, "vk_id": 676760867},
-    {"id": 6, "name": "Крюкова Екатерина", "tg_id": 5209067734, "vk_id": 653464614},
-    {"id": 7, "name": "Лавренов Денис", "tg_id": 1776233614, "vk_id": 0},
-    {"id": 8, "name": "Лапкин Никита", "tg_id": 786412327, "vk_id": 648972537},
-    {"id": 9, "name": "Леваев Денис", "tg_id": 1380783132, "vk_id": 0},
-    {"id": 10, "name": "Малюта Кирилл", "tg_id": 2036039791, "vk_id": 514896986},
-    {"id": 11, "name": "Манин Даниил", "tg_id": 1426586903, "vk_id": 645040795},
-    {"id": 12, "name": "Нестеренко Артем", "tg_id": 1590263622, "vk_id": 650095472},
-    {"id": 13, "name": "Нестеренко Кирилл", "tg_id": 1816834428, "vk_id": 0},
-    {"id": 14, "name": "Петровский Кирилл", "tg_id": 1049352750, "vk_id": 585815790},
-    {"id": 15, "name": "Половинкин Максим", "tg_id": 5012979967, "vk_id": 651715517},
-    {"id": 16, "name": "Попов Илья", "tg_id": 1678240030, "vk_id": 631499535},
-    {"id": 17, "name": "Постнов Максим", "tg_id": 620159705, "vk_id": 437805680},
-    {"id": 18, "name": "Резников Филипп", "tg_id": 1249491991, "vk_id": 607391313},
-    {"id": 19, "name": "Скорик Глеб", "tg_id": 654109019, "vk_id": 509518532},
-    {"id": 20, "name": "Филимонов Дмитрий", "tg_id": 6969927775, "vk_id": 604540036},
-    {"id": 21, "name": "Франк Никита", "tg_id": 1329870096, "vk_id": 591025661},
-    {"id": 22, "name": "Четвериков Вадим", "tg_id": 5273066461, "vk_id": 550484299},
-]
-
-ALL_PEOPLE = STUDENTS + STAFF
-TG_NAME_MAP = {s["tg_id"]: s["name"] for s in ALL_PEOPLE if s.get("tg_id")}
-VK_NAME_MAP = {
-    s["vk_id"]: s["name"] for s in ALL_PEOPLE if s.get("vk_id") and s["vk_id"] != 0
-}
+TG_NAME_MAP = {}
+VK_NAME_MAP = {}
 
 
 UNDO_STORAGE = {}
@@ -354,9 +343,15 @@ async def generate_excel_report(year: str, month: str):
 
     row_idx = START_ROW + 2
     day_totals = {d: 0 for d in range(1, last_day + 1)}
+    pool = await get_db_pool()
+    student_rows = await pool.fetch(
+        "SELECT u.id, u.full_name as name FROM users u JOIN group_members gm ON u.id = gm.user_id WHERE gm.role = 'student'"
+    )
+    students_list = [dict(r) for r in student_rows]
+
     grand_total_nb = 0
     grand_total_uv = 0
-    sorted_students = sorted(STUDENTS, key=lambda x: x["name"])
+    sorted_students = sorted(students_list, key=lambda x: x["name"])
 
     for idx, s in enumerate(sorted_students, 1):
         ws.cell(row=row_idx, column=START_COL, value=idx).border = border
@@ -490,7 +485,7 @@ class AsyncVKBridge:
         res = await self.api_call("users.get", {"user_ids": ids_str})
         return res.get("response", [])
 
-    async def send_message(self, text, peer_id=_ENV_VK_CHAT_PEER_ID, attachment=""):
+    async def send_message(self, text, peer_id, attachment=""):
         params = {
             "peer_id": peer_id,
             "message": text,
@@ -1233,12 +1228,17 @@ async def handle_list(message: Message):
     excluded_names = [l.strip().lower() for l in lines[1:] if l.strip()]
 
     duty_list = []
-    for s in STUDENTS:
+    student_rows = await pool.fetch(
+        "SELECT u.id, u.full_name FROM users u "
+        "JOIN group_members gm ON u.id = gm.user_id "
+        "WHERE gm.role = 'student'"
+    )
+    for s in student_rows:
         if s["id"] in EXCLUDED_IDS:
             continue
-        if any(ex in s["name"].lower() for ex in excluded_names):
+        if any(ex in s["full_name"].lower() for ex in excluded_names):
             continue
-        duty_list.append({"name": s["name"], "date": db_data.get(s["id"])})
+        duty_list.append({"name": s["full_name"], "date": db_data.get(s["id"])})
 
     duty_list.sort(key=lambda x: (x["date"] is None, x["date"]))
 
@@ -1289,8 +1289,14 @@ async def handle_vk_names(message: Message):
 
     sent_status = await message.answer("🔍 Синхронизация со списками VK...")
 
-    with_vk_id = [s for s in ALL_PEOPLE if s.get("vk_id") and s["vk_id"] != 0]
-    no_vk_id = [s for s in ALL_PEOPLE if not s.get("vk_id") or s["vk_id"] == 0]
+    pool = await get_db_pool()
+    user_rows = await pool.fetch(
+        "SELECT full_name as name, vk_user_id as vk_id FROM users"
+    )
+    all_people = [dict(r) for r in user_rows]
+
+    with_vk_id = [s for s in all_people if s.get("vk_id") and s["vk_id"] != 0]
+    no_vk_id = [s for s in all_people if not s.get("vk_id") or s["vk_id"] == 0]
 
     found_list = []
     error_id_list = []
@@ -1363,11 +1369,20 @@ async def handle_dury(message: Message):
     rows = await pool.fetch("SELECT student_id, date FROM duties")
     current_state = {r["student_id"]: r["date"] for r in rows}
 
+    student_rows = await pool.fetch(
+        "SELECT u.id, u.full_name as name FROM users u "
+        "JOIN group_members gm ON u.id = gm.user_id "
+        "WHERE gm.role = 'student'"
+    )
+    students_list = [dict(r) for r in student_rows]
+
     for line in names_input:
         search = line.strip().lower()
         if not search:
             continue
-        found_student = next((s for s in STUDENTS if search in s["name"].lower()), None)
+        found_student = next(
+            (s for s in students_list if search in s["name"].lower()), None
+        )
 
         if found_student:
             s_id = found_student["id"]
@@ -1645,7 +1660,9 @@ async def process_tg_messages_to_vk(messages: list[Message], target_vk_peer: int
             await save_msg_link(m.message_id, vk_msg_id)
 
 
-@dp.message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()), ~F.text.startswith("/"))
+@dp.message(
+    F.chat.id.func(lambda chat_id: chat_id in REVERSE_CHAT_MAP), ~F.text.startswith("/")
+)
 async def tg_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
@@ -1671,7 +1688,7 @@ async def tg_to_vk_handler(message: Message):
         await process_tg_messages_to_vk([message], target_vk_peer)
 
 
-@dp.edited_message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()))
+@dp.edited_message(F.chat.id.func(lambda chat_id: chat_id in REVERSE_CHAT_MAP))
 async def tg_edit_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
