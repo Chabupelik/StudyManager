@@ -103,12 +103,9 @@ async def get_admin_users(
 
     for admin_id, full_name in admins_map.items():
         data = online_data.get(admin_id)
-        name = full_name
+        name = full_name or (data.name if data else f"Пользователь {admin_id}")
 
-        if data:
-            # Prefer the name from audit logs (recent interaction)
-            name = data.name
-        elif admin_id == settings.curator_id:
+        if admin_id == settings.curator_id:
             name = "Виктория Александровна"
 
         last_seen = data.last_seen if data else 0

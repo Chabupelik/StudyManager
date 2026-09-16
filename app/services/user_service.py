@@ -64,6 +64,16 @@ async def load_student_cache(session: AsyncSession) -> None:
         _id_to_name = {s["id"]: s["name"] for s in STUDENTS}
         _id_to_tg = {s["id"]: s.get("tg_id", 0) for s in STUDENTS}
 
+    # Also load from newer users table
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    users = (await session.execute(select(User))).scalars().all()
+    for u in users:
+        if u.tg_user_id:
+            _tg_id_to_name[u.tg_user_id] = u.full_name
+
 
 def get_display_name(user: UserContext) -> str:
     settings = get_settings()
