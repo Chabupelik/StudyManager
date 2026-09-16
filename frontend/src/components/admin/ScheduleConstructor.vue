@@ -260,6 +260,11 @@ function toggleDay(day: number) {
               <label class="text-xs font-bold text-app-muted uppercase">Преподаватель</label>
               <input type="text" v-model="editingLesson.teacher" placeholder="Фамилия И.О." class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-app-accent rounded-xl px-3 py-2 text-sm text-app-text outline-none transition-colors" />
             </div>
+
+            <div class="space-y-1.5 col-span-2">
+              <label class="text-xs font-bold text-app-muted uppercase">Кабинет (опц.)</label>
+              <input type="text" v-model="editingLesson.classroom" placeholder="Например: 404 или 408/409" class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-app-accent rounded-xl px-3 py-2 text-sm text-app-text outline-none transition-colors" />
+            </div>
             
             <div class="space-y-1.5">
               <label class="text-xs font-bold text-app-muted uppercase">Начало *</label>

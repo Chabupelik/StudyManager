@@ -59,6 +59,7 @@ async def get_base_lessons_for_date(
             "time": l.start_time.strftime("%H:%M"),
             "name": l.name,
             "teacher": l.teacher,
+            "classroom": l.classroom,
         }
         for l in lessons
     ]
@@ -99,6 +100,7 @@ async def build_schedule(
                     if ovr and ovr.new_teacher
                     else lesson.get("teacher") or "Не назначен"
                 ),
+                "classroom": lesson.get("classroom"),
                 "canceled": bool(ovr and ovr.is_canceled),
                 "absent_count": absent_counts.get(t, 0),
             }
@@ -111,6 +113,7 @@ async def build_schedule(
                     "time": t,
                     "name": ovr.new_name or "Без названия",
                     "teacher": ovr.new_teacher or "Не назначен",
+                    "classroom": None,  # Overrides do not currently support changing classroom
                     "canceled": bool(ovr.is_canceled),
                     "absent_count": absent_counts.get(t, 0),
                 }

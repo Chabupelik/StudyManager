@@ -8,6 +8,7 @@ class LessonResponse(BaseModel):
     canceled: bool
     absent_count: int
     is_current: bool
+    classroom: str | None = None
 
 
 class ScheduleResponse(BaseModel):
