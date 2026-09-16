@@ -33,7 +33,12 @@ export const useScheduleStore = defineStore('schedule', () => {
 
   function invalidateCache(dateStr?: string) {
     if (dateStr) {
-      cache.delete(dateStr);
+      // Remove all cache entries starting with the date
+      for (const k of cache.keys()) {
+        if (k.startsWith(dateStr)) {
+          cache.delete(k);
+        }
+      }
     } else {
       cache.clear();
     }
@@ -41,10 +46,11 @@ export const useScheduleStore = defineStore('schedule', () => {
 
   async function loadSchedule(force = false) {
     const key = dateKey.value;
+    const cacheKey = `${key}_${selectedGroupId.value}`;
     const now = Date.now();
 
-    if (!force && cache.has(key)) {
-      const entry = cache.get(key)!;
+    if (!force && cache.has(cacheKey)) {
+      const entry = cache.get(cacheKey)!;
       if (entry.expires > now) {
         lessons.value = entry.data;
         return;
@@ -58,7 +64,7 @@ export const useScheduleStore = defineStore('schedule', () => {
         : `/api/schedule?date=${key}`;
       const res = await ApiClient.get<ScheduleResponse>(url);
       lessons.value = res.lessons || [];
-      cache.set(key, { data: lessons.value, expires: now + CACHE_TTL });
+      cache.set(cacheKey, { data: lessons.value, expires: now + CACHE_TTL });
     } catch (e) {
       console.error('Failed to load schedule', e);
     } finally {
@@ -72,6 +78,7 @@ export const useScheduleStore = defineStore('schedule', () => {
    */
   async function refreshSilently() {
     const key = dateKey.value;
+    const cacheKey = `${key}_${selectedGroupId.value}`;
     const now = Date.now();
     try {
       const url = selectedGroupId.value 
@@ -79,7 +86,7 @@ export const useScheduleStore = defineStore('schedule', () => {
         : `/api/schedule?date=${key}`;
       const res = await ApiClient.get<ScheduleResponse>(url);
       lessons.value = res.lessons || [];
-      cache.set(key, { data: lessons.value, expires: now + CACHE_TTL });
+      cache.set(cacheKey, { data: lessons.value, expires: now + CACHE_TTL });
     } catch (e) {
       console.error('Failed to refresh schedule silently', e);
     }
