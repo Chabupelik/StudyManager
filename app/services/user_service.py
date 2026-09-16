@@ -29,10 +29,6 @@ class UserContext:
     def is_curator(self) -> bool:
         return self.id == get_settings().curator_id
 
-    @property
-    def is_admin(self) -> bool:
-        return self.id in get_settings().admin_ids_list
-
 
 _tg_id_to_name: dict[int, str] = {}
 _id_to_name: dict[int, str] = {}
@@ -99,8 +95,7 @@ def get_role_label(user: UserContext) -> str:
         return "куратор группы"
     if user.id == settings.developer_id:
         return "староста/разработчик"
-    if user.id in settings.admin_ids_list:
-        return "заместитель старосты"
+
     return "студент"
 
 

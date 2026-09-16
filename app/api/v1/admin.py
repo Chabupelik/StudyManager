@@ -27,14 +27,8 @@ async def ping(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
-    settings = get_settings()
-    is_admin = (
-        ctx.is_superadmin
-        or ctx.user.id in settings.admin_ids_list
-        or any(
-            role in ["headman", "deputy", "curator"]
-            for role in ctx.groups_roles.values()
-        )
+    is_admin = ctx.is_superadmin or any(
+        role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
     )
 
     if is_admin:
@@ -75,7 +69,6 @@ async def get_admin_users(
         .outerjoin(GroupMember, GroupMember.user_id == User.id)
         .where(
             (User.is_superadmin.is_(True))
-            | (User.tg_user_id.in_(settings.admin_ids_list))
             | (GroupMember.role.in_(["headman", "deputy", "curator"]))
         )
         .distinct()
@@ -91,11 +84,6 @@ async def get_admin_users(
     # Ensure developer is always in the list
     if settings.developer_id not in admins_map:
         admins_map[settings.developer_id] = "ID " + str(settings.developer_id)
-
-    # Ensure hardcoded admins from config are always in the list
-    for admin_id in settings.admin_ids_list:
-        if admin_id not in admins_map:
-            admins_map[admin_id] = "ID " + str(admin_id)
 
     now = time.time()
     admins_list = []
@@ -139,16 +127,9 @@ async def get_init(
     if not ctx.groups_roles and not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
 
-    settings = get_settings()
-
-    # User is an admin if they are superadmin, in admin_ids_list, or have an admin-level role in any group
-    is_admin = (
-        ctx.is_superadmin
-        or ctx.user.id in settings.admin_ids_list
-        or any(
-            role in ["headman", "deputy", "curator"]
-            for role in ctx.groups_roles.values()
-        )
+    # User is an admin if they are superadmin, or have an admin-level role in any group
+    is_admin = ctx.is_superadmin or any(
+        role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
     )
 
     return {

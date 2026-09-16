@@ -192,12 +192,16 @@ def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
 # ---------------------------------------------------------------------------
 
 
-async def require_admin(user: UserContext = Depends(get_current_user)) -> UserContext:
-    """Deprecated: checks admin_ids list from config. Prefer require_group_role."""
-    settings = get_settings()
-    if user.id not in settings.admin_ids_list and user.id != settings.developer_id:
+async def require_admin(
+    ctx: UserPermissionContext = Depends(get_current_user_context),
+) -> UserPermissionContext:
+    """Requires the user to have superadmin status or an admin-level role in any group."""
+    is_admin = ctx.is_superadmin or any(
+        role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
+    )
+    if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    return user
+    return ctx
 
 
 async def require_developer(
