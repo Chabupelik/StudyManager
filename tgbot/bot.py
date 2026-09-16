@@ -30,7 +30,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.data.schedule_data import BASE_SCHEDULE
+from app.data.schedule_data import BASE_SCHEDULES
 
 load_dotenv()
 
@@ -219,9 +219,10 @@ async def generate_excel_report(year: str, month: str):
         date_str = f"{y}-{m:02d}-{d:02d}"
         wday = datetime(y, m, d).weekday()
 
+        base_schedule = BASE_SCHEDULES.get(2, [])
         base_times = {
             l["time"]
-            for l in BASE_SCHEDULE
+            for l in base_schedule
             if l["day"] == wday and l["start"] <= date_str <= l["end"]
         }
         day_ovr = {r[1]: bool(r[2]) for r in overrides_data if r[0] == date_str}
