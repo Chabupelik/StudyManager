@@ -153,7 +153,11 @@ async def get_base_schedule(
         select(Lesson)
         .join(Schedule)
         .where(Schedule.group_id == group_id)
-        .order_by(Schedule.day_of_week, Lesson.start_time)
+        .order_by(
+            Schedule.day_of_week,
+            Lesson.valid_from.desc().nulls_first(),
+            Lesson.start_time,
+        )
     )
     lessons = (await db.execute(stmt_lessons)).scalars().all()
 
