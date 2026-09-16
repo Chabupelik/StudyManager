@@ -86,9 +86,18 @@ async def load_chat_maps_from_db() -> None:
     if TEST_VK_CHAT_PEER_ID and TEST_GROUP_ID:
         new_map[TEST_VK_CHAT_PEER_ID] = TEST_GROUP_ID
 
-    CHAT_MAP = new_map
-    REVERSE_CHAT_MAP = {v: k for k, v in CHAT_MAP.items()}
+    CHAT_MAP.clear()
+    CHAT_MAP.update(new_map)
+    REVERSE_CHAT_MAP.clear()
+    REVERSE_CHAT_MAP.update({v: k for k, v in CHAT_MAP.items()})
     logging.info("Chat maps loaded: %d group(s)", len(CHAT_MAP))
+
+
+async def chat_map_refresh_loop():
+    """Periodically refreshes the chat map from the DB to catch real-time group changes."""
+    while True:
+        await asyncio.sleep(10)
+        await load_chat_maps_from_db()
 
 
 # PostgreSQL settings
@@ -1636,7 +1645,7 @@ async def process_tg_messages_to_vk(messages: list[Message], target_vk_peer: int
             await save_msg_link(m.message_id, vk_msg_id)
 
 
-@dp.message(lambda msg: msg.chat.id in REVERSE_CHAT_MAP, ~F.text.startswith("/"))
+@dp.message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()), ~F.text.startswith("/"))
 async def tg_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
@@ -1662,7 +1671,7 @@ async def tg_to_vk_handler(message: Message):
         await process_tg_messages_to_vk([message], target_vk_peer)
 
 
-@dp.edited_message(lambda msg: msg.chat.id in REVERSE_CHAT_MAP)
+@dp.edited_message(F.chat.id.in_(REVERSE_CHAT_MAP.keys()))
 async def tg_edit_to_vk_handler(message: Message):
     if message.from_user.is_bot:
         return
@@ -1695,7 +1704,14 @@ async def main():
     await get_db_pool()
     logging.info("✅ Подключение к PostgreSQL установлено")
 
+    # Initial load of chat maps
     await load_chat_maps_from_db()
+
+    # Start auto-refresh loop
+    asyncio.create_task(chat_map_refresh_loop())
+
+    if not CHAT_MAP:
+        logging.warning("⚠️ CHAT_MAP пуст!")
 
     await bot.delete_webhook(drop_pending_updates=True)
     task_tg = asyncio.create_task(dp.start_polling(bot))
