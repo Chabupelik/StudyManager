@@ -30,8 +30,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.data.schedule_data import BASE_SCHEDULES
-
 load_dotenv()
 
 # --- CONFIG & SECRETS ---
@@ -219,12 +217,17 @@ async def generate_excel_report(year: str, month: str):
         date_str = f"{y}-{m:02d}-{d:02d}"
         wday = datetime(y, m, d).weekday()
 
-        base_schedule = BASE_SCHEDULES.get(2, [])
-        base_times = {
-            l["time"]
-            for l in base_schedule
-            if l["day"] == wday and l["start"] <= date_str <= l["end"]
-        }
+        # Fetch base times from DB instead of BASE_SCHEDULES
+        lesson_rows = await pool.fetch(
+            "SELECT start_time FROM lessons l JOIN schedules s ON l.schedule_id = s.id "
+            "WHERE s.group_id = $1 AND s.day_of_week = $2 "
+            "AND (l.valid_from IS NULL OR l.valid_from <= $3) "
+            "AND (l.valid_until IS NULL OR l.valid_until >= $3)",
+            2,
+            wday,
+            datetime.strptime(date_str, "%Y-%m-%d").date(),
+        )
+        base_times = {r["start_time"].strftime("%H:%M") for r in lesson_rows}
         day_ovr = {r[1]: bool(r[2]) for r in overrides_data if r[0] == date_str}
 
         active_count = 0

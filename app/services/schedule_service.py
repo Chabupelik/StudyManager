@@ -3,31 +3,64 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytz
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.schedule_data import BASE_SCHEDULES
 from app.models.override import Override
+from app.models.schedule_new import Lesson, Schedule
 
 MSK = pytz.timezone("Europe/Moscow")
 LESSON_DURATION_MINUTES = 90
 
 
-def get_base_times_for_date(group_id: int, date_str: str) -> set[str]:
+async def get_base_times_for_date(
+    session: AsyncSession, group_id: int, date_str: str
+) -> set[str]:
     weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
-    base_schedule = BASE_SCHEDULES.get(group_id, [])
-    return {
-        l["time"]
-        for l in base_schedule
-        if l["day"] == weekday and l["start"] <= date_str <= l["end"]
-    }
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    stmt = (
+        select(Lesson.start_time)
+        .join(Schedule)
+        .where(
+            Schedule.group_id == group_id,
+            Schedule.day_of_week == weekday,
+            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
+            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
+        )
+    )
+    result = await session.execute(stmt)
+    times = result.scalars().all()
+    return {t.strftime("%H:%M") for t in times}
 
 
-def get_base_lessons_for_date(group_id: int, date_str: str) -> list[dict]:
+async def get_base_lessons_for_date(
+    session: AsyncSession, group_id: int, date_str: str
+) -> list[dict]:
     weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
-    base_schedule = BASE_SCHEDULES.get(group_id, [])
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    stmt = (
+        select(Lesson)
+        .join(Schedule)
+        .where(
+            Schedule.group_id == group_id,
+            Schedule.day_of_week == weekday,
+            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
+            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
+        )
+        .order_by(Lesson.start_time)
+    )
+    result = await session.execute(stmt)
+    lessons = result.scalars().all()
+
     return [
-        l.copy()
-        for l in base_schedule
-        if l["day"] == weekday and l["start"] <= date_str <= l["end"]
+        {
+            "time": l.start_time.strftime("%H:%M"),
+            "name": l.name,
+            "teacher": l.teacher,
+        }
+        for l in lessons
     ]
 
 
@@ -39,14 +72,15 @@ def compute_active_times(base_times: set[str], overrides: list[Override]) -> set
     return (base_times - canceled) | added
 
 
-def build_schedule(
+async def build_schedule(
+    session: AsyncSession,
     group_id: int,
     date_str: str,
     overrides: list[Override],
     absent_counts: dict[str, int],
     current_time_str: str | None = None,
 ) -> list[dict]:
-    base_lessons = get_base_lessons_for_date(group_id, date_str)
+    base_lessons = await get_base_lessons_for_date(session, group_id, date_str)
     override_map: dict[str, Override] = {o.time: o for o in overrides}
 
     temp: list[dict] = []
@@ -63,7 +97,7 @@ def build_schedule(
                 "teacher": (
                     ovr.new_teacher
                     if ovr and ovr.new_teacher
-                    else lesson.get("teacher", "Не назначен")
+                    else lesson.get("teacher") or "Не назначен"
                 ),
                 "canceled": bool(ovr and ovr.is_canceled),
                 "absent_count": absent_counts.get(t, 0),
@@ -108,7 +142,8 @@ def build_schedule(
     return temp
 
 
-def get_subject_at(
+async def get_subject_at(
+    session: AsyncSession,
     group_id: int,
     date_str: str,
     time_str: str,
@@ -116,26 +151,37 @@ def get_subject_at(
     override_map: dict[tuple[str, str], dict],
 ) -> tuple[str | None, str | None]:
     ovr = override_map.get((date_str, time_str))
-    base_schedule = BASE_SCHEDULES.get(group_id, [])
     if ovr and ovr["canceled"]:
         return None, None
+
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
     if ovr and ovr["name"]:
-        teacher = next(
-            (l["teacher"] for l in base_schedule if l["name"] == ovr["name"]),
-            "Замена",
+        stmt = (
+            select(Lesson.teacher)
+            .join(Schedule)
+            .where(Schedule.group_id == group_id, Lesson.name == ovr["name"])
+            .limit(1)
         )
+        res = await session.execute(stmt)
+        teacher = res.scalar_one_or_none() or "Замена"
         return ovr["name"], teacher
 
-    match = next(
-        (
-            l
-            for l in base_schedule
-            if l["day"] == weekday
-            and l["time"] == time_str
-            and l["start"] <= date_str <= l["end"]
-        ),
-        None,
+    stmt = (
+        select(Lesson)
+        .join(Schedule)
+        .where(
+            Schedule.group_id == group_id,
+            Schedule.day_of_week == weekday,
+            Lesson.start_time == datetime.strptime(time_str, "%H:%M").time(),
+            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
+            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
+        )
+        .limit(1)
     )
+    result = await session.execute(stmt)
+    match = result.scalar_one_or_none()
+
     if match:
-        return match["name"], match["teacher"]
+        return match.name, match.teacher
     return None, None

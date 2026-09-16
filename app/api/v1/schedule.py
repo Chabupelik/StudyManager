@@ -68,8 +68,8 @@ async def get_schedule(
     overrides = await ovr_repo.get_for_date(target_group_id, date)
     absent_counts = await att_repo.get_absent_count_by_time(target_group_id, date)
 
-    lessons = build_schedule(
-        target_group_id, date, overrides, absent_counts, current_time_str
+    lessons = await build_schedule(
+        db, target_group_id, date, overrides, absent_counts, current_time_str
     )
     return ScheduleResponse(date=date, lessons=lessons)
 

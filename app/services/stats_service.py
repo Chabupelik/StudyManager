@@ -3,10 +3,12 @@ from __future__ import annotations
 import calendar
 from datetime import datetime, timedelta
 
-from app.data.schedule_data import BASE_SCHEDULES
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.attendance import Attendance
 from app.models.override import Override
-from app.services.schedule_service import get_subject_at
+from app.models.schedule_new import Lesson, Schedule
 
 
 def _build_override_map(overrides: list[Override]) -> dict[tuple[str, str], dict]:
@@ -20,11 +22,26 @@ def _build_override_map(overrides: list[Override]) -> dict[tuple[str, str], dict
     return result
 
 
+async def _get_base_lessons(
+    session: AsyncSession, group_id: int
+) -> list[tuple[Lesson, int]]:
+    stmt = (
+        select(Lesson, Schedule.day_of_week)
+        .join(Schedule)
+        .where(Schedule.group_id == group_id)
+    )
+    res = await session.execute(stmt)
+    return res.all()  # [(Lesson, day_of_week), ...]
+
+
 def compute_total_hours(
-    group_id: int, overrides: list[Override], from_date_str: str, to_date_str: str
+    overrides: list[Override],
+    base_lessons: list[tuple[Lesson, int]],
+    from_date_str: str,
+    to_date_str: str,
 ) -> int:
-    start_dt = datetime.strptime(from_date_str, "%Y-%m-%d")
-    end_dt = datetime.strptime(to_date_str, "%Y-%m-%d")
+    start_dt = datetime.strptime(from_date_str, "%Y-%m-%d").date()
+    end_dt = datetime.strptime(to_date_str, "%Y-%m-%d").date()
 
     canceled_set = {(o.date, o.time) for o in overrides if o.is_canceled}
     added_set = {(o.date, o.time) for o in overrides if not o.is_canceled}
@@ -34,12 +51,16 @@ def compute_total_hours(
     while curr <= end_dt:
         d_str = curr.strftime("%Y-%m-%d")
         wday = curr.weekday()
-        base_schedule = BASE_SCHEDULES.get(group_id, [])
-        base_times = {
-            l["time"]
-            for l in base_schedule
-            if l["day"] == wday and l["start"] <= d_str <= l["end"]
-        }
+
+        # Find valid lessons for this date and weekday
+        base_times = set()
+        for l, day in base_lessons:
+            if day == wday:
+                if (l.valid_from is None or l.valid_from <= curr) and (
+                    l.valid_until is None or l.valid_until >= curr
+                ):
+                    base_times.add(l.start_time.strftime("%H:%M"))
+
         count = sum(1 for t in base_times if (d_str, t) not in canceled_set)
         count += sum(1 for (dt, t) in added_set if dt == d_str and t not in base_times)
         total += count * 2
@@ -48,23 +69,32 @@ def compute_total_hours(
     return total
 
 
-def compute_month_hours(
-    group_id: int, year: int, month: int, overrides: list[Override]
+async def compute_month_hours(
+    session: AsyncSession,
+    group_id: int,
+    year: int,
+    month: int,
+    overrides: list[Override],
 ) -> int:
     _, last_day = calendar.monthrange(year, month)
     from_str = f"{year}-{month:02d}-01"
     to_str = f"{year}-{month:02d}-{last_day:02d}"
-    return compute_total_hours(group_id, overrides, from_str, to_str)
+    base_lessons = await _get_base_lessons(session, group_id)
+    return compute_total_hours(overrides, base_lessons, from_str, to_str)
 
 
-def compute_lifetime_hours(group_id: int, overrides: list[Override]) -> int:
-    base_schedule = BASE_SCHEDULES.get(group_id, [])
-    start_dates = [l["start"] for l in base_schedule]
+async def compute_lifetime_hours(
+    session: AsyncSession, group_id: int, overrides: list[Override]
+) -> int:
+    base_lessons = await _get_base_lessons(session, group_id)
+
+    start_dates = [l.valid_from for l, _ in base_lessons if l.valid_from]
     if not start_dates:
         return 0
-    from_str = min(start_dates)
+    from_str = min(start_dates).strftime("%Y-%m-%d")
     to_str = datetime.now().strftime("%Y-%m-%d")
-    return compute_total_hours(group_id, overrides, from_str, to_str)
+
+    return compute_total_hours(overrides, base_lessons, from_str, to_str)
 
 
 def aggregate_student_stats(
@@ -95,7 +125,38 @@ def aggregate_student_stats(
     return {"total": total, "month": month}
 
 
-def compute_subject_stats(
+def _get_subject_at_memory(
+    date_str: str,
+    time_str: str,
+    wday: int,
+    override_map: dict[tuple[str, str], dict],
+    base_lessons: list[tuple[Lesson, int]],
+) -> tuple[str | None, str | None]:
+    ovr = override_map.get((date_str, time_str))
+    if ovr and ovr["canceled"]:
+        return None, None
+    if ovr and ovr["name"]:
+        # Find teacher by name
+        teacher = "Замена"
+        for l, _ in base_lessons:
+            if l.name == ovr["name"] and l.teacher:
+                teacher = l.teacher
+                break
+        return ovr["name"], teacher
+
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    for l, day in base_lessons:
+        if day == wday and l.start_time.strftime("%H:%M") == time_str:
+            if (l.valid_from is None or l.valid_from <= date_obj) and (
+                l.valid_until is None or l.valid_until >= date_obj
+            ):
+                return l.name, l.teacher
+    return None, None
+
+
+async def compute_subject_stats(
+    session: AsyncSession,
     group_id: int,
     student_id: int,
     absences: list[Attendance],
@@ -104,25 +165,39 @@ def compute_subject_stats(
 ) -> list[dict]:
     override_map = _build_override_map(overrides)
     today_dt = datetime.now()
-    base_schedule = BASE_SCHEDULES.get(group_id, [])
 
-    start_dates = [l["start"] for l in base_schedule]
+    base_lessons = await _get_base_lessons(session, group_id)
+
+    start_dates = [l.valid_from for l, _ in base_lessons if l.valid_from]
     if not start_dates:
         return []
-    earliest_dt = datetime.strptime(min(start_dates), "%Y-%m-%d")
+    earliest_dt = min(start_dates)
+    if isinstance(earliest_dt, datetime):
+        earliest_dt = earliest_dt.date()
+
+    # Convert earliest_dt to datetime for loop
+    curr_dt = datetime(earliest_dt.year, earliest_dt.month, earliest_dt.day)
 
     stats: dict[str, dict] = {}
 
-    curr_dt = earliest_dt
     while curr_dt <= today_dt:
         d_str = curr_dt.strftime("%Y-%m-%d")
         wday = curr_dt.weekday()
 
-        day_times: set[str] = {l["time"] for l in base_schedule if l["day"] == wday}
+        day_times = set()
+        for l, day in base_lessons:
+            if day == wday:
+                if (l.valid_from is None or l.valid_from <= curr_dt.date()) and (
+                    l.valid_until is None or l.valid_until >= curr_dt.date()
+                ):
+                    day_times.add(l.start_time.strftime("%H:%M"))
+
         day_times.update(t for (dt, t) in override_map.keys() if dt == d_str)
 
         for t_str in day_times:
-            name, teacher = get_subject_at(group_id, d_str, t_str, wday, override_map)
+            name, teacher = _get_subject_at_memory(
+                d_str, t_str, wday, override_map, base_lessons
+            )
             if name:
                 if name not in stats:
                     stats[name] = {
@@ -141,7 +216,7 @@ def compute_subject_stats(
     for a in absences:
         d_str, t_str = a.date, a.time
         wday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
-        name, _ = get_subject_at(group_id, d_str, t_str, wday, override_map)
+        name, _ = _get_subject_at_memory(d_str, t_str, wday, override_map, base_lessons)
         if not name:
             name = "Доп. занятие"
         if name not in stats:
