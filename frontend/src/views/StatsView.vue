@@ -31,7 +31,7 @@ function handleExportExcel() {
   const y = statsStore.currentMonth.getFullYear();
   const m = String(statsStore.currentMonth.getMonth() + 1).padStart(2, '0');
   const botUsername = 'manager_ems_bot';
-  const groupId = groupsStore.activeGroupId || 2;
+  const groupId = groupsStore.activeGroupId || (authStore.myGroups.length > 0 ? authStore.myGroups[0].id : 2);
   const deepLink = `https://t.me/${botUsername}?start=report_${y}_${m}_${groupId}`;
 
   tg.openTelegramLink(deepLink);

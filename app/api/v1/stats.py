@@ -54,15 +54,15 @@ async def get_stats(
 
     aggregated = aggregate_student_stats(all_records, month_records)
     total_month_hours = await compute_month_hours(
-        db, group_id, int(year), int(month), overrides
+        db, target_group_id, int(year), int(month), overrides
     )
-    total_lifetime_hours = await compute_lifetime_hours(db, group_id, overrides)
+    total_lifetime_hours = await compute_lifetime_hours(db, target_group_id, overrides)
 
     stmt = (
         select(User)
         .join(GroupMember, GroupMember.user_id == User.id)
         .where(
-            GroupMember.group_id == group_id,
+            GroupMember.group_id == target_group_id,
             GroupMember.role.in_(
                 [MemberRole.student, MemberRole.headman, MemberRole.deputy]
             ),
