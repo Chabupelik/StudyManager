@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.data.students_data import EXCLUDED_DUTY_STUDENT_IDS
 from app.db.database import async_session_maker, get_db
 from app.integrations import telegram, vk
-from app.models.group_member import GroupMember
+from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.duty_repo import DutyRepository
@@ -91,7 +91,12 @@ async def get_duties(
     stmt = (
         select(User)
         .join(GroupMember, GroupMember.user_id == User.id)
-        .where(GroupMember.group_id == group_id)
+        .where(
+            GroupMember.group_id == group_id,
+            GroupMember.role.in_(
+                [MemberRole.student, MemberRole.headman, MemberRole.deputy]
+            ),
+        )
         .order_by(User.full_name)
     )
     users = (await db.execute(stmt)).scalars().all()
