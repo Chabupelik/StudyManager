@@ -28,7 +28,7 @@ async def ping(
     db: AsyncSession = Depends(get_db),
 ):
     settings = get_settings()
-    if ctx.is_developer:
+    if ctx.is_superadmin:
         return {"status": "ok"}
 
     if ctx.user.id in settings.admin_ids_list:
