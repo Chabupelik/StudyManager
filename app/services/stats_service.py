@@ -71,7 +71,7 @@ def aggregate_student_stats(
     month: dict[int, dict] = {}
 
     for r in all_records:
-        sid = r.student_id
+        sid = r.user_id
         if sid not in total:
             total[sid] = {"nb": 0, "uv": 0}
         if r.status == 1:
@@ -80,7 +80,7 @@ def aggregate_student_stats(
             total[sid]["uv"] += 2
 
     for r in month_records:
-        sid = r.student_id
+        sid = r.user_id
         if sid not in month:
             month[sid] = {"nb": 0, "uv": 0}
         if r.status == 1:
