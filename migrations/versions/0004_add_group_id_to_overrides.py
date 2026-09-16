@@ -7,7 +7,6 @@ Create Date: 2026-09-16
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004"
@@ -17,29 +16,48 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # Add group_id column with default value 1 for existing overrides
-    op.add_column(
-        "overrides",
-        sa.Column("group_id", sa.Integer(), nullable=False, server_default="1"),
+    # 1. Add column (idempotent)
+    op.execute(
+        "ALTER TABLE overrides ADD COLUMN IF NOT EXISTS group_id INTEGER DEFAULT 1 NOT NULL"
     )
 
-    # Create index for group_id
-    op.create_index(
-        op.f("ix_overrides_group_id"), "overrides", ["group_id"], unique=False
+    # 2. Index (idempotent)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_overrides_group_id ON overrides(group_id)"
     )
 
-    # Create foreign key
-    op.create_foreign_key(
-        "fk_overrides_group_id",
-        "overrides",
-        "groups",
-        ["group_id"],
-        ["id"],
-        ondelete="CASCADE",
+    # 3. Foreign key (idempotent)
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'fk_overrides_group_id'
+            ) THEN
+                ALTER TABLE overrides
+                    ADD CONSTRAINT fk_overrides_group_id
+                    FOREIGN KEY (group_id) REFERENCES groups(id)
+                    ON DELETE CASCADE;
+            END IF;
+        END $$;
+        """
     )
 
-    # Drop old unique constraint and create new one
-    op.drop_constraint("uq_override", "overrides", type_="unique")
+    # 4. Update unique constraint
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_override'
+            ) THEN
+                ALTER TABLE overrides DROP CONSTRAINT uq_override;
+            END IF;
+        END $$;
+        """
+    )
     op.create_unique_constraint(
         "uq_override", "overrides", ["date", "time", "group_id"]
     )
