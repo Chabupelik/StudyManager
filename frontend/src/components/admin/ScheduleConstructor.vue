@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { useAuthStore } from '../../stores/auth';
+import { ref, onMounted } from 'vue';
 import { ApiClient as api } from '../../api/client';
 import { useUiStore } from '../../stores/ui';
 import { Clock, Plus, Trash2, Edit2, Calendar as CalendarIcon, Save, X, ChevronDown, ChevronUp } from 'lucide-vue-next';
@@ -21,8 +20,6 @@ interface BaseScheduleDay {
   day_of_week: number;
   lessons: BaseLessonItem[];
 }
-
-const authStore = useAuthStore();
 const uiStore = useUiStore();
 
 const props = defineProps<{
