@@ -25,37 +25,32 @@ interface BaseScheduleDay {
 const authStore = useAuthStore();
 const uiStore = useUiStore();
 
+const props = defineProps<{
+  groupId: number;
+}>();
+
 const schedules = ref<BaseScheduleDay[]>([]);
 const loading = ref(false);
-
-const availableGroups = computed(() => {
-  if (authStore.isSuperAdmin) {
-    return [
-      { id: 2, name: '37/2' },
-      { id: 3, name: '37/1' },
-      { id: 4, name: '38/1' },
-      { id: 5, name: '38/2' },
-    ];
-  }
-  return authStore.myGroups;
-});
-
-const selectedGroupId = ref<number>(availableGroups.value[0]?.id || 1);
 
 const daysOfWeek = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
 async function loadSchedules() {
-  if (!selectedGroupId.value) return;
+  if (!props.groupId) return;
   loading.value = true;
   try {
-    const res = await api.get(`/schedule/admin/base?group_id=${selectedGroupId.value}`);
-    schedules.value = res.data;
+    const res = await api.get(`/schedule/admin/base?group_id=${props.groupId}`);
+    schedules.value = Array.isArray(res) ? res : [];
   } catch (error) {
     uiStore.showToast('Ошибка загрузки расписания', 'error');
   } finally {
     loading.value = false;
   }
 }
+
+import { watch } from 'vue';
+watch(() => props.groupId, () => {
+  loadSchedules();
+});
 
 onMounted(() => {
   loadSchedules();
@@ -116,7 +111,7 @@ async function saveLesson() {
       await api.put(`/schedule/admin/base/lesson/${editingLesson.value.id}`, payload);
       uiStore.showToast('Пара обновлена', 'success');
     } else {
-      await api.post(`/schedule/admin/base/${selectedGroupId.value}/${editingLesson.value.day_of_week}`, payload);
+      await api.post(`/schedule/admin/base/${props.groupId}/${editingLesson.value.day_of_week}`, payload);
       uiStore.showToast('Пара добавлена', 'success');
     }
     closeModal();
@@ -154,16 +149,6 @@ function toggleDay(day: number) {
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-bold text-app-text">Конструктор расписания</h3>
-      <select
-        v-if="availableGroups.length > 1"
-        v-model="selectedGroupId"
-        @change="loadSchedules"
-        class="bg-app-card border border-app-border rounded-xl px-3 py-1.5 text-xs text-app-text outline-none focus:border-app-accent transition-colors"
-      >
-        <option v-for="g in availableGroups" :key="g.id" :value="g.id">
-          {{ g.name }}
-        </option>
-      </select>
     </div>
 
     <div v-if="loading" class="text-center py-8 text-app-muted text-xs">

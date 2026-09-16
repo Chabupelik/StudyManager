@@ -15,8 +15,10 @@ import {
   BookOpen,
   RefreshCw,
   X,
+  CalendarDays,
 } from 'lucide-vue-next';
 import type { AddMemberBody } from '../api/groups';
+import ScheduleConstructor from '../components/admin/ScheduleConstructor.vue';
 
 const groupsStore = useGroupsStore();
 const authStore = useAuthStore();
@@ -334,6 +336,15 @@ async function doDeleteGroup() {
               </span>
             </div>
           </div>
+        </div>
+
+        <!-- Schedule Section -->
+        <div v-if="isSuperAdmin" class="premium-card rounded-2xl p-4 space-y-3">
+          <div class="flex items-center gap-2 text-xs font-bold text-app-muted uppercase tracking-wider mb-2">
+            <CalendarDays class="w-3.5 h-3.5 text-purple-500" />
+            <span>Расписание группы</span>
+          </div>
+          <ScheduleConstructor :groupId="groupsStore.activeGroup()!.id" />
         </div>
 
         <!-- Members Section -->
