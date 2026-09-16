@@ -194,13 +194,13 @@ async def generate_excel_report(year: str, month: str):
 
     # Загружаем посещаемость
     att_rows = await pool.fetch(
-        "SELECT date, student_id, status FROM attendance WHERE date LIKE $1 AND status > 0",
+        "SELECT date, user_id, status FROM attendance WHERE date LIKE $1 AND status > 0 AND group_id = 2",
         month_prefix + "%",
     )
     data = {}
     for row in att_rows:
         d_int = int(row["date"].split("-")[2])
-        s_id = row["student_id"]
+        s_id = row["user_id"]
         if s_id not in data:
             data[s_id] = {}
         if d_int not in data[s_id]:
@@ -1224,8 +1224,8 @@ async def help_command(message: Message):
 @dp.message(Command("list"))
 async def handle_list(message: Message):
     pool = await get_db_pool()
-    rows = await pool.fetch("SELECT student_id, date FROM duties")
-    db_data = {r["student_id"]: r["date"] for r in rows}
+    rows = await pool.fetch("SELECT user_id, date FROM duties WHERE group_id = 2")
+    db_data = {r["user_id"]: r["date"] for r in rows}
 
     lines = message.text.split("\n")
     excluded_names = [l.strip().lower() for l in lines[1:] if l.strip()]
@@ -1369,8 +1369,8 @@ async def handle_dury(message: Message):
     undo_list = []
 
     pool = await get_db_pool()
-    rows = await pool.fetch("SELECT student_id, date FROM duties")
-    current_state = {r["student_id"]: r["date"] for r in rows}
+    rows = await pool.fetch("SELECT user_id, date FROM duties WHERE group_id = 2")
+    current_state = {r["user_id"]: r["date"] for r in rows}
 
     student_rows = await pool.fetch(
         "SELECT u.id, u.full_name as name FROM users u "
@@ -1392,8 +1392,8 @@ async def handle_dury(message: Message):
             undo_list.append({"id": s_id, "old_date": current_state.get(s_id)})
             await pool.execute(
                 """
-                INSERT INTO duties (student_id, date) VALUES ($1, $2)
-                ON CONFLICT (student_id) DO UPDATE SET date = $2
+                INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
+                ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
                 """,
                 s_id,
                 target_date,
@@ -1451,12 +1451,14 @@ async def process_undo(callback: CallbackQuery):
     pool = await get_db_pool()
     for item in undo_data:
         if item["old_date"] is None:
-            await pool.execute("DELETE FROM duties WHERE student_id = $1", item["id"])
+            await pool.execute(
+                "DELETE FROM duties WHERE user_id = $1 AND group_id = 2", item["id"]
+            )
         else:
             await pool.execute(
                 """
-                INSERT INTO duties (student_id, date) VALUES ($1, $2)
-                ON CONFLICT (student_id) DO UPDATE SET date = $2
+                INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
+                ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
                 """,
                 item["id"],
                 item["old_date"],
@@ -1490,13 +1492,13 @@ async def process_web_undo(callback: CallbackQuery):
         for item in undo_data:
             if item.get("date") is None:
                 await pool.execute(
-                    "DELETE FROM duties WHERE student_id = $1", item["id"]
+                    "DELETE FROM duties WHERE user_id = $1 AND group_id = 2", item["id"]
                 )
             else:
                 await pool.execute(
                     """
-                    INSERT INTO duties (student_id, date) VALUES ($1, $2)
-                    ON CONFLICT (student_id) DO UPDATE SET date = $2
+                    INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
+                    ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
                     """,
                     item["id"],
                     item["date"],

@@ -66,12 +66,19 @@ class AttendanceRepository(BaseRepository):
     async def get_absent_count_by_time(
         self, group_id: int, date: str
     ) -> dict[str, int]:
+        from app.models.group_member import GroupMember, MemberRole
+
         result = await self.session.execute(
             select(Attendance.time, func.count(Attendance.id))
+            .join(GroupMember, GroupMember.user_id == Attendance.user_id)
             .where(
                 Attendance.group_id == group_id,
                 Attendance.date == date,
                 Attendance.status > 0,
+                GroupMember.group_id == group_id,
+                GroupMember.role.in_(
+                    [MemberRole.student, MemberRole.headman, MemberRole.deputy]
+                ),
             )
             .group_by(Attendance.time)
         )
