@@ -91,6 +91,18 @@ export const useGroupsStore = defineStore('groups', () => {
     members.value = members.value.filter((m) => m.user_id !== userId);
   }
 
+  async function deleteGroup(groupId: number): Promise<void> {
+    await GroupsApi.deleteGroup(groupId);
+    groups.value = groups.value.filter((g) => g.id !== groupId);
+    if (activeGroupId.value === groupId) {
+      activeGroupId.value = null;
+      members.value = [];
+      if (groups.value.length > 0) {
+        await selectGroup(groups.value[0].id);
+      }
+    }
+  }
+
   return {
     groups,
     activeGroupId,
@@ -104,6 +116,7 @@ export const useGroupsStore = defineStore('groups', () => {
     loadMembers,
     createGroup,
     updateGroup,
+    deleteGroup,
     addMember,
     updateMember,
     removeMember,

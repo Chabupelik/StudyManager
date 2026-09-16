@@ -216,6 +216,25 @@ async function doRemove() {
     confirmDeleteUserId.value = null;
   }
 }
+
+// ── Remove Group ─────────────────────────────────────────────────────────────
+const confirmDeleteGroupId = ref<number | null>(null);
+
+async function confirmDeleteGroup(groupId: number) {
+  confirmDeleteGroupId.value = groupId;
+}
+
+async function doDeleteGroup() {
+  if (!confirmDeleteGroupId.value) return;
+  try {
+    await groupsStore.deleteGroup(confirmDeleteGroupId.value);
+    uiStore.showToast('Группа удалена', 'info');
+  } catch (e: any) {
+    uiStore.showToast(e.message || 'Ошибка удаления', 'error');
+  } finally {
+    confirmDeleteGroupId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -282,14 +301,24 @@ async function doRemove() {
               <Building2 class="w-3.5 h-3.5 text-app-accent" />
               <span>{{ groupsStore.activeGroup()!.name }}</span>
             </div>
-            <button
-              v-if="isSuperAdmin"
-              class="p-1 rounded-lg text-app-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
-              title="Редактировать группу"
-              @click="openEditGroup(groupsStore.activeGroup()!)"
-            >
-              <Edit2 class="w-3.5 h-3.5" />
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                v-if="isSuperAdmin"
+                class="p-1 rounded-lg text-app-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+                title="Редактировать группу"
+                @click="openEditGroup(groupsStore.activeGroup()!)"
+              >
+                <Edit2 class="w-3.5 h-3.5" />
+              </button>
+              <button
+                v-if="isSuperAdmin"
+                class="p-1 rounded-lg text-app-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+                title="Удалить группу"
+                @click="confirmDeleteGroup(groupsStore.activeGroup()!.id)"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="bg-app-canvas rounded-xl p-2.5">
@@ -533,6 +562,36 @@ async function doRemove() {
             <button
               class="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 active:scale-98 transition-all"
               @click="doRemove"
+            >
+              Удалить
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ── Confirm Delete Group ─────────────────────────────────────────── -->
+    <Teleport to="body">
+      <div
+        v-if="confirmDeleteGroupId !== null"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        @click.self="confirmDeleteGroupId = null"
+      >
+        <div class="bg-app-card rounded-2xl p-6 mx-4 max-w-sm w-full space-y-4 shadow-2xl">
+          <h3 class="text-sm font-extrabold text-app-text">Удалить группу?</h3>
+          <p class="text-xs text-app-muted text-red-400">
+            Внимание! Это действие безвозвратно удалит группу, всех участников и все отметки об их посещаемости!
+          </p>
+          <div class="flex gap-2">
+            <button
+              class="flex-1 py-2.5 rounded-xl border border-app-border text-app-muted text-xs font-bold hover:bg-slate-200/40 dark:hover:bg-slate-800 transition-all"
+              @click="confirmDeleteGroupId = null"
+            >
+              Отмена
+            </button>
+            <button
+              class="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 active:scale-98 transition-all"
+              @click="doDeleteGroup"
             >
               Удалить
             </button>

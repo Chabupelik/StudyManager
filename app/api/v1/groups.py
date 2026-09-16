@@ -142,6 +142,39 @@ async def update_group(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /groups/{group_id} — delete a group (superadmin only)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{group_id}", status_code=204)
+async def delete_group(
+    group_id: int,
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Delete a study group and related records. Requires superadmin."""
+    if not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Superadmin required")
+
+    group = await session.get(Group, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    from sqlalchemy import delete
+
+    from app.models.attendance import Attendance
+    from app.models.duty import Duty
+
+    # Delete records that don't have ON DELETE CASCADE at the DB schema level
+    await session.execute(delete(Attendance).where(Attendance.group_id == group_id))
+    await session.execute(delete(Duty).where(Duty.group_id == group_id))
+
+    await session.delete(group)
+    await session.flush()
+    return
+
+
+# ---------------------------------------------------------------------------
 # GET /groups/my — list groups the current user belongs to
 # ---------------------------------------------------------------------------
 

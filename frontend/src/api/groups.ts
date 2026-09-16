@@ -69,4 +69,8 @@ export const GroupsApi = {
   async removeMember(groupId: number, userId: number): Promise<void> {
     await ApiClient.delete(`/api/groups/${groupId}/members/${userId}`);
   },
+
+  async deleteGroup(groupId: number): Promise<void> {
+    await ApiClient.delete(`/api/groups/${groupId}`);
+  },
 };
