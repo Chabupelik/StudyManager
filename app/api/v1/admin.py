@@ -28,10 +28,16 @@ async def ping(
     db: AsyncSession = Depends(get_db),
 ):
     settings = get_settings()
-    if ctx.is_superadmin:
-        return {"status": "ok"}
+    is_admin = (
+        ctx.is_superadmin
+        or ctx.user.id in settings.admin_ids_list
+        or any(
+            role in ["headman", "deputy", "curator"]
+            for role in ctx.groups_roles.values()
+        )
+    )
 
-    if ctx.user.id in settings.admin_ids_list:
+    if is_admin:
         name = get_display_name(ctx.user)
         repo = AuditRepository(db)
         await repo.upsert_admin_online(ctx.user.id, name)
@@ -58,19 +64,51 @@ async def get_admin_users(
     repo = AuditRepository(db)
     online_data = await repo.get_all_admins_online()
 
+    # Query all users who are admins
+    from sqlalchemy import select
+
+    from app.models.group_member import GroupMember
+    from app.models.user import User
+
+    stmt = (
+        select(User.tg_user_id, User.full_name)
+        .outerjoin(GroupMember, GroupMember.user_id == User.id)
+        .where(
+            (User.is_superadmin.is_(True))
+            | (User.tg_user_id.in_(settings.admin_ids_list))
+            | (GroupMember.role.in_(["headman", "deputy", "curator"]))
+        )
+        .distinct()
+    )
+    result = await db.execute(stmt)
+    admin_users = result.all()
+
+    # Create a mapping of tg_user_id -> full_name
+    admins_map = {
+        row.tg_user_id: row.full_name for row in admin_users if row.tg_user_id
+    }
+
+    # Ensure developer is always in the list
+    if settings.developer_id not in admins_map:
+        admins_map[settings.developer_id] = "ID " + str(settings.developer_id)
+
+    # Ensure hardcoded admins from config are always in the list
+    for admin_id in settings.admin_ids_list:
+        if admin_id not in admins_map:
+            admins_map[admin_id] = "ID " + str(admin_id)
+
     now = time.time()
     admins_list = []
-    for admin_id in settings.admin_ids_list:
+
+    for admin_id, full_name in admins_map.items():
         data = online_data.get(admin_id)
-        name = "ID " + str(admin_id)
+        name = full_name
+
         if data:
+            # Prefer the name from audit logs (recent interaction)
             name = data.name
         elif admin_id == settings.curator_id:
             name = "Виктория Александровна"
-        else:
-            from app.services.user_service import _tg_id_to_name
-
-            name = _tg_id_to_name.get(admin_id, name)
 
         last_seen = data.last_seen if data else 0
 
