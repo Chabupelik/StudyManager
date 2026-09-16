@@ -59,18 +59,31 @@ async def get_admin_users(
     online_data = await repo.get_all_admins_online()
 
     # Query all users who are admins
-    from sqlalchemy import select
+    from sqlalchemy import or_, select
 
     from app.models.group_member import GroupMember
     from app.models.user import User
 
+    conditions = [User.is_superadmin.is_(True)]
+
+    if ctx.is_superadmin:
+        conditions.append(GroupMember.role.in_(["headman", "deputy", "curator"]))
+    else:
+        admin_group_ids = [
+            int(gid)
+            for gid, role in ctx.groups_roles.items()
+            if role in ["headman", "deputy", "curator"]
+        ]
+        if admin_group_ids:
+            conditions.append(
+                GroupMember.role.in_(["headman", "deputy", "curator"])
+                & GroupMember.group_id.in_(admin_group_ids)
+            )
+
     stmt = (
         select(User.tg_user_id, User.full_name)
         .outerjoin(GroupMember, GroupMember.user_id == User.id)
-        .where(
-            (User.is_superadmin.is_(True))
-            | (GroupMember.role.in_(["headman", "deputy", "curator"]))
-        )
+        .where(or_(*conditions))
         .distinct()
     )
     result = await db.execute(stmt)
