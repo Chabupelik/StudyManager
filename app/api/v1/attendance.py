@@ -49,7 +49,7 @@ async def get_lesson_details(
 ):
     _parse_date(date)  # validate
 
-    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
+    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(
             status_code=403, detail="Forbidden: No access to this group"
         )
@@ -129,7 +129,7 @@ async def update_attendance(
     _parse_date(data.date)  # validate
 
     group_id = data.group_id
-    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
+    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
@@ -199,7 +199,7 @@ async def update_attendance_day(
     _parse_date(data.date)  # validate
 
     group_id = data.group_id
-    if not ctx.is_superadmin and group_id not in (ctx.groups_roles or {}):
+    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
