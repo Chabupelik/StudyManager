@@ -1430,7 +1430,9 @@ async def handle_dury(message: Message):
 
     await message.answer(resp, reply_markup=kb)
     clean_vk_text = re.sub(r"<[^>]+>", "", resp)
-    await vk_bridge.send_message(clean_vk_text)
+    target_vk_peer = REVERSE_CHAT_MAP.get(message.chat.id)
+    if target_vk_peer:
+        await vk_bridge.send_message(clean_vk_text, peer_id=target_vk_peer)
 
 
 @dp.callback_query(F.data.startswith("undo_dury:"))
@@ -1462,7 +1464,11 @@ async def process_undo(callback: CallbackQuery):
         "🔄 <b>ИЗМЕНЕНИЯ ОТМЕНЕНЫ!</b>\nВозвращены старые даты.", reply_markup=None
     )
     await callback.answer("Готово")
-    await vk_bridge.send_message("🔄 Назначение дежурных отменено.")
+    target_vk_peer = REVERSE_CHAT_MAP.get(callback.message.chat.id)
+    if target_vk_peer:
+        await vk_bridge.send_message(
+            "🔄 Назначение дежурных отменено.", peer_id=target_vk_peer
+        )
     asyncio.create_task(notify_backend_duties())
 
 
@@ -1500,7 +1506,11 @@ async def process_web_undo(callback: CallbackQuery):
             f"{callback.message.html_text}\n\n❌ <b>ОТМЕНЕНО</b>", reply_markup=None
         )
         await callback.answer("Изменения отменены")
-        await vk_bridge.send_message("🔄 Назначение дежурных с сайта отменено.")
+        target_vk_peer = REVERSE_CHAT_MAP.get(callback.message.chat.id)
+        if target_vk_peer:
+            await vk_bridge.send_message(
+                "🔄 Назначение дежурных с сайта отменено.", peer_id=target_vk_peer
+            )
         asyncio.create_task(notify_backend_duties())
     else:
         await callback.answer("⏳ Невозможно отменить", show_alert=True)
