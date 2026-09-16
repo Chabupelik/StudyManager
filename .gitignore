@@ -11,7 +11,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # --- База данных и локальные файлы ---
-data/
+/data/
 backups/
 *.db
 *.sqlite3
