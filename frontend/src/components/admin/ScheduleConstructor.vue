@@ -157,7 +157,7 @@ function getSemesterName(valid_from?: string): string {
       <h3 class="text-sm font-bold text-app-text">Конструктор расписания</h3>
     </div>
 
-    <div v-if="loading" class="text-center py-8 text-app-muted text-xs">
+    <div v-if="loading && schedules.length === 0" class="text-center py-8 text-app-muted text-xs">
       Загрузка расписания...
     </div>
 
