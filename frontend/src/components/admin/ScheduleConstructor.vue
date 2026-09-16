@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '../../stores/auth';
-import { api } from '../../api';
+import { ApiClient as api } from '../../api/client';
 import { useUiStore } from '../../stores/ui';
 import { Clock, Plus, Trash2, Edit2, Calendar as CalendarIcon, Save, X, ChevronDown, ChevronUp } from 'lucide-vue-next';
 
@@ -29,7 +29,7 @@ const schedules = ref<BaseScheduleDay[]>([]);
 const loading = ref(false);
 
 const availableGroups = computed(() => {
-  if (authStore.user?.is_superadmin) {
+  if (authStore.isSuperAdmin) {
     return [
       { id: 2, name: '37/2' },
       { id: 3, name: '37/1' },
@@ -37,7 +37,7 @@ const availableGroups = computed(() => {
       { id: 5, name: '38/2' },
     ];
   }
-  return authStore.user?.groups_roles ? Object.keys(authStore.user.groups_roles).map(id => ({ id: Number(id), name: `Группа ${id}` })) : [];
+  return authStore.myGroups;
 });
 
 const selectedGroupId = ref<number>(availableGroups.value[0]?.id || 1);
