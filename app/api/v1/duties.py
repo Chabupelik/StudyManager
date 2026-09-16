@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, require_admin
+from app.api.dependencies import (
+    UserPermissionContext,
+    get_current_user_context,
+)
 from app.core.config import get_settings
 from app.data.students_data import EXCLUDED_DUTY_STUDENT_IDS
 from app.db.database import async_session_maker, get_db
 from app.integrations import telegram, vk
+from app.models.group_member import GroupMember
+from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.duty_repo import DutyRepository
 from app.repositories.override_repo import OverrideRepository
@@ -21,12 +28,7 @@ from app.services.schedule_service import (
     compute_active_times,
     get_base_times_for_date,
 )
-from app.services.user_service import (
-    UserContext,
-    get_all_students_with_tg,
-    get_display_name,
-    get_name_by_student_id,
-)
+from app.services.user_service import get_display_name
 from app.websocket.manager import manager
 
 router = APIRouter(tags=["duties"])
@@ -41,18 +43,22 @@ async def _log_duties_action(
 
 @router.get("/duties", response_model=DutiesResponse)
 async def get_duties(
-    user: UserContext = Depends(get_current_user),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now(MSK)
     date_str = now.strftime("%Y-%m-%d")
     current_time_str = now.strftime("%H:%M")
 
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        return DutiesResponse(duties=[])
+    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
     duty_repo = DutyRepository(db)
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    duties_map = await duty_repo.get_all()
+    duties_map = await duty_repo.get_all(group_id)
     overrides = await ovr_repo.get_for_date(date_str)
     base_times = get_base_times_for_date(date_str)
     active_times = compute_active_times(base_times, overrides)
@@ -78,22 +84,30 @@ async def get_duties(
 
     absent_ids: set[int] = set()
     if target_time:
-        for r in await att_repo.get_for_lesson(date_str, target_time):
+        for r in await att_repo.get_for_lesson(group_id, date_str, target_time):
             if r.status > 0:
-                absent_ids.add(r.student_id)
+                absent_ids.add(r.user_id)
 
-    students = get_all_students_with_tg()
+    stmt = (
+        select(User)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .where(GroupMember.group_id == group_id)
+        .order_by(User.full_name)
+    )
+    users = (await db.execute(stmt)).scalars().all()
+
     result = []
-    for s in students:
-        if s["id"] in EXCLUDED_DUTY_STUDENT_IDS:
+    for u in users:
+        # Temporary compat for EXCLUDED_DUTY_STUDENT_IDS (by old ID)
+        if u.id in EXCLUDED_DUTY_STUDENT_IDS:
             continue
         result.append(
             {
-                "id": s["id"],
-                "name": s["name"],
-                "tg_id": s["tg_id"],
-                "date": duties_map.get(s["id"]),
-                "is_absent_now": s["id"] in absent_ids,
+                "id": u.id,
+                "name": u.full_name,
+                "tg_id": u.tg_user_id or 0,
+                "date": duties_map.get(u.id),
+                "is_absent_now": u.id in absent_ids,
             }
         )
 
@@ -105,28 +119,34 @@ async def get_duties(
 async def assign_duties(
     data: DutyAssignRequest,
     background_tasks: BackgroundTasks,
-    user: UserContext = Depends(require_admin),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     settings = get_settings()
     duty_repo = DutyRepository(db)
 
-    current_duties = await duty_repo.get_all()
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
+    current_duties = await duty_repo.get_all(group_id)
     undo_data = []
     assigned_names = []
     undo_id = str(uuid.uuid4())[:8]
 
-    for s_id in data.student_ids:
-        undo_data.append({"id": s_id, "date": current_duties.get(s_id)})
-        await duty_repo.upsert(s_id, data.date)
-        assigned_names.append(get_name_by_student_id(s_id))
+    for user_id in data.student_ids:
+        undo_data.append({"id": user_id, "date": current_duties.get(user_id)})
+        await duty_repo.upsert(group_id, user_id, data.date)
+        user_obj = await db.get(User, user_id)
+        name = user_obj.full_name if user_obj else f"Пользователь {user_id}"
+        assigned_names.append(name)
 
     await duty_repo.save_undo(undo_id, undo_data)
     await db.commit()
 
     await manager.broadcast({"type": "update_duties"})
 
-    admin_name = get_display_name(user)
+    admin_name = get_display_name(ctx.user)
     date_nice = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m.%Y")
     tg_text = (
         f"🔔 <b>Назначены дежурные (через сайт)!</b>\n"
@@ -136,7 +156,7 @@ async def assign_duties(
     for name in assigned_names:
         tg_text += f"✅ <b>{name}</b>\n"
     tg_text += (
-        f'\n👤 <b>Назначил:</b> <a href="tg://user?id={user.id}">{admin_name}</a>'
+        f'\n👤 <b>Назначил:</b> <a href="tg://user?id={ctx.user.id}">{admin_name}</a>'
     )
 
     keyboard = {
@@ -156,12 +176,14 @@ async def assign_duties(
         admin_name,
         "Назначение дежурных",
         f"Дата: {data.date}. Дежурят: {short_names}",
-        user.id,
+        ctx.user.id,
     )
     return {"status": "ok"}
 
 
 @router.post("/internal/broadcast_duties")
-async def broadcast_duties(_: UserContext = Depends(require_admin)):
+async def broadcast_duties(
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+):
     await manager.broadcast({"type": "update_duties"})
     return {"status": "ok"}

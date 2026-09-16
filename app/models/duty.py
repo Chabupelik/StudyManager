@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -6,10 +6,13 @@ from app.models.base import Base
 
 class Duty(Base):
     __tablename__ = "duties"
-
-    student_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("students.id", ondelete="CASCADE"), primary_key=True
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_group_user_duty"),
     )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     date: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 

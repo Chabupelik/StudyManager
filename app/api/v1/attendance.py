@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, require_admin
+from app.api.dependencies import (
+    UserPermissionContext,
+    get_current_user_context,
+)
 from app.db.database import async_session_maker, get_db
+from app.models.group_member import GroupMember
+from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
 from app.schemas.attendance import AttendanceUpdateRequest, LessonDetailsResponse
@@ -15,12 +22,7 @@ from app.services.schedule_service import (
     compute_active_times,
     get_base_times_for_date,
 )
-from app.services.user_service import (
-    UserContext,
-    get_all_students_with_tg,
-    get_display_name,
-    get_name_by_student_id,
-)
+from app.services.user_service import get_display_name
 from app.websocket.manager import manager
 
 router = APIRouter(tags=["attendance"])
@@ -41,16 +43,24 @@ def _parse_date(date: str) -> datetime:
 async def get_lesson_details(
     date: str,
     time: str,
-    user: UserContext = Depends(get_current_user),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     _parse_date(date)  # validate
 
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        return LessonDetailsResponse(students=[])
+
+    # Fallback to the first group if no group_id is specified in the frontend yet
+    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    current_att = {r.student_id: r for r in await att_repo.get_for_lesson(date, time)}
-    all_day_att = await att_repo.get_for_date(date)
+    current_att = {
+        r.user_id: r for r in await att_repo.get_for_lesson(group_id, date, time)
+    }
+    all_day_att = await att_repo.get_for_date(group_id, date)
 
     overrides = await ovr_repo.get_for_date(date)
     base_times = get_base_times_for_date(date)
@@ -58,14 +68,21 @@ async def get_lesson_details(
 
     student_day_map: dict[int, dict[str, int]] = {}
     for r in all_day_att:
-        if r.student_id not in student_day_map:
-            student_day_map[r.student_id] = {}
-        student_day_map[r.student_id][r.time] = r.status
+        if r.user_id not in student_day_map:
+            student_day_map[r.user_id] = {}
+        student_day_map[r.user_id][r.time] = r.status
 
-    students = get_all_students_with_tg()
+    stmt = (
+        select(User)
+        .join(GroupMember, GroupMember.user_id == User.id)
+        .where(GroupMember.group_id == group_id)
+        .order_by(User.full_name)
+    )
+    users = (await db.execute(stmt)).scalars().all()
+
     result = []
-    for s in students:
-        s_id = s["id"]
+    for u in users:
+        s_id = u.id
         curr = current_att.get(s_id)
         curr_status = curr.status if curr else 0
         curr_reason = curr.reason if curr else ""
@@ -79,8 +96,8 @@ async def get_lesson_details(
         result.append(
             {
                 "id": s_id,
-                "tg_id": s["tg_id"],
-                "name": s["name"],
+                "tg_id": u.tg_user_id or 0,
+                "name": u.full_name,
                 "status": curr_status,
                 "reason": curr_reason,
                 "is_all_day": is_all_day,
@@ -93,7 +110,6 @@ async def get_lesson_details(
 async def _log_attendance_action(
     admin_name: str, action_type: str, details: str, user_id: int
 ) -> None:
-    """Runs log_action inside a fresh DB session — safe for background tasks."""
     async with async_session_maker() as session:
         await log_action(session, admin_name, action_type, details, user_id=user_id)
 
@@ -102,18 +118,23 @@ async def _log_attendance_action(
 async def update_attendance(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    user: UserContext = Depends(require_admin),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     _parse_date(data.date)  # validate
+
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
     await att_repo.upsert(
+        group_id=group_id,
         date=data.date,
         time=data.time,
-        student_id=data.student_id,
+        user_id=data.student_id,  # student_id from frontend is now user_id
         status=data.status,
         reason=data.reason or "",
     )
@@ -153,16 +174,21 @@ async def update_attendance(
         }
     )
 
-    admin_name = get_display_name(user)
+    admin_name = get_display_name(ctx.user)
     stat_str = "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
-    student_name = get_name_by_student_id(data.student_id)
+    user_obj = await db.get(User, data.student_id)
+    student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
     fmt_date = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m")
     log_details = (
         f"{fmt_date} | {data.time} | {lesson_name}\n{student_name} ➔ {stat_str}"
     )
 
     background_tasks.add_task(
-        _log_attendance_action, admin_name, "Изменение отметки", log_details, user.id
+        _log_attendance_action,
+        admin_name,
+        "Изменение отметки",
+        log_details,
+        ctx.user.id,
     )
     return {"status": "ok"}
 
@@ -171,10 +197,14 @@ async def update_attendance(
 async def update_attendance_day(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    user: UserContext = Depends(require_admin),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     _parse_date(data.date)  # validate
+
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
 
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
@@ -185,9 +215,10 @@ async def update_attendance_day(
 
     for t in active_times:
         await att_repo.upsert(
+            group_id=group_id,
             date=data.date,
             time=t,
-            student_id=data.student_id,
+            user_id=data.student_id,
             status=data.status,
             reason=data.reason or "",
         )
@@ -202,14 +233,15 @@ async def update_attendance_day(
         }
     )
 
-    admin_name = get_display_name(user)
-    student_name = get_name_by_student_id(data.student_id)
+    admin_name = get_display_name(ctx.user)
+    user_obj = await db.get(User, data.student_id)
+    student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
     stat_str = "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
     background_tasks.add_task(
         _log_attendance_action,
         admin_name,
         "Отметка на весь день",
         f"Студент {student_name} ({data.date}) → {stat_str}",
-        user.id,
+        ctx.user.id,
     )
     return {"status": "ok"}
