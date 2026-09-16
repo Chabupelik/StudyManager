@@ -51,9 +51,12 @@ function getEndTime(startTime: string, name: string): string {
       </div>
       <div
         v-if="lesson.classroom"
-        class="flex items-center justify-center px-1 py-1 rounded-lg bg-slate-100 text-app-muted dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 text-[9.5px] font-bold text-center leading-none tracking-tight max-w-[70px]"
+        class="flex items-center justify-center gap-0.5 px-1.5 py-1 w-full max-w-[75px] rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800/80 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 shadow-sm transition-colors group-hover:border-slate-300 dark:group-hover:border-slate-600"
       >
-        <span class="truncate w-full">{{ lesson.classroom }}</span>
+        <MapPin class="w-2.5 h-2.5 text-app-accent flex-shrink-0 opacity-90" />
+        <span class="text-[9px] font-bold leading-none tracking-tight truncate text-center">
+          Каб. {{ lesson.classroom }}
+        </span>
       </div>
     </div>
 
