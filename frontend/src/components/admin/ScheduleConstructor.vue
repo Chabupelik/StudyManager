@@ -136,6 +136,19 @@ function toggleDay(day: number) {
     expandedDays.value.add(day);
   }
 }
+
+function getSemesterName(valid_from?: string): string {
+  if (!valid_from) return 'Постоянные пары';
+  const [y, m] = valid_from.split('-');
+  const year = parseInt(y, 10);
+  const month = parseInt(m, 10);
+  
+  if (month >= 9 && month <= 12) {
+    return `1 семестр ${year}-${year + 1}`;
+  } else {
+    return `2 семестр ${year - 1}-${year}`;
+  }
+}
 </script>
 
 <template>
@@ -170,52 +183,60 @@ function toggleDay(day: number) {
 
         <!-- Lessons List -->
         <div v-show="expandedDays.has(day)" class="p-3 bg-app-card border-t border-app-border space-y-2">
-          <div 
-            v-for="(lesson, index) in (schedules.find(s => s.day_of_week === day)?.lessons || [])" 
-            :key="lesson.id"
-            class="group flex flex-col sm:flex-row gap-3 sm:items-center justify-between p-3 rounded-xl border border-app-border/50 bg-slate-50/50 dark:bg-slate-800/20 hover:border-app-accent/30 hover:bg-app-accent/5 transition-all"
-          >
-            <!-- Lesson Info -->
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-app-text font-bold text-xs shrink-0">
-                {{ index + 1 }}
-              </div>
-              <div>
-                <div class="text-sm font-bold text-app-text">{{ lesson.name }}</div>
-                <div class="flex items-center gap-2 text-xs text-app-muted mt-0.5">
-                  <span class="flex items-center gap-1">
-                    <Clock class="w-3.5 h-3.5" />
-                    {{ lesson.start_time }} - {{ lesson.end_time }}
-                  </span>
-                  <span v-if="lesson.teacher" class="opacity-50">•</span>
-                  <span v-if="lesson.teacher">{{ lesson.teacher }}</span>
-                  <span v-if="lesson.classroom" class="opacity-50">•</span>
-                  <span v-if="lesson.classroom">Каб. {{ lesson.classroom }}</span>
-                </div>
-                <div v-if="lesson.valid_from || lesson.valid_until" class="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-1 uppercase tracking-wide">
-                  Действует: {{ lesson.valid_from ? 'с ' + lesson.valid_from : 'всегда' }} {{ lesson.valid_until ? 'по ' + lesson.valid_until : '' }}
-                </div>
-              </div>
+          <template v-for="(lesson, index) in (schedules.find(s => s.day_of_week === day)?.lessons || [])" :key="lesson.id">
+            
+            <!-- Semester Header -->
+            <div 
+              v-if="index === 0 || getSemesterName(lesson.valid_from) !== getSemesterName(schedules.find(s => s.day_of_week === day)!.lessons[index - 1].valid_from)"
+              class="text-[10px] font-bold text-app-muted uppercase tracking-wider mt-4 mb-2 px-1"
+              :class="{ 'mt-0': index === 0 }"
+            >
+              {{ getSemesterName(lesson.valid_from) }}
             </div>
 
-            <!-- Actions -->
-            <div class="flex items-center gap-2 self-end sm:self-auto sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-              <button 
-                @click="openEditModal(day, lesson)"
-                class="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-                title="Редактировать"
-              >
-                <Edit2 class="w-4 h-4" />
-              </button>
-              <button 
-                @click="deleteLesson(lesson.id)"
-                class="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-                title="Удалить"
-              >
-                <Trash2 class="w-4 h-4" />
-              </button>
+            <div class="group flex flex-col sm:flex-row gap-3 sm:items-center justify-between p-3 rounded-xl border border-app-border/50 bg-slate-50/50 dark:bg-slate-800/20 hover:border-app-accent/30 hover:bg-app-accent/5 transition-all">
+              <!-- Lesson Info -->
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-app-text font-bold text-xs shrink-0">
+                  {{ index + 1 }}
+                </div>
+                <div>
+                  <div class="text-sm font-bold text-app-text">{{ lesson.name }}</div>
+                  <div class="flex items-center gap-2 text-xs text-app-muted mt-0.5">
+                    <span class="flex items-center gap-1">
+                      <Clock class="w-3.5 h-3.5" />
+                      {{ lesson.start_time }} - {{ lesson.end_time }}
+                    </span>
+                    <span v-if="lesson.teacher" class="opacity-50">•</span>
+                    <span v-if="lesson.teacher">{{ lesson.teacher }}</span>
+                    <span v-if="lesson.classroom" class="opacity-50">•</span>
+                    <span v-if="lesson.classroom">Каб. {{ lesson.classroom }}</span>
+                  </div>
+                  <div v-if="lesson.valid_from || lesson.valid_until" class="text-[10px] text-amber-600 dark:text-amber-400 font-medium mt-1 uppercase tracking-wide">
+                    Действует: {{ lesson.valid_from ? 'с ' + lesson.valid_from : 'всегда' }} {{ lesson.valid_until ? 'по ' + lesson.valid_until : '' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-2 self-end sm:self-auto sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                <button 
+                  @click="openEditModal(day, lesson)"
+                  class="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                  title="Редактировать"
+                >
+                  <Edit2 class="w-4 h-4" />
+                </button>
+                <button 
+                  @click="deleteLesson(lesson.id)"
+                  class="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                  title="Удалить"
+                >
+                  <Trash2 class="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          </template>
 
           <div v-if="!schedules.find(s => s.day_of_week === day)?.lessons.length" class="text-center py-4 text-xs text-app-muted italic">
             Нет пар в этот день
