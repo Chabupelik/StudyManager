@@ -12,7 +12,7 @@ from app.api.dependencies import (
     get_current_user_context,
 )
 from app.db.database import async_session_maker, get_db
-from app.models.group_member import GroupMember
+from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
@@ -75,7 +75,12 @@ async def get_lesson_details(
     stmt = (
         select(User)
         .join(GroupMember, GroupMember.user_id == User.id)
-        .where(GroupMember.group_id == group_id)
+        .where(
+            GroupMember.group_id == group_id,
+            GroupMember.role.in_(
+                [MemberRole.student, MemberRole.headman, MemberRole.deputy]
+            ),
+        )
         .order_by(User.full_name)
     )
     users = (await db.execute(stmt)).scalars().all()

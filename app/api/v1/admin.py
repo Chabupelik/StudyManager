@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import time
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_current_user, require_admin, require_developer
+from app.api.dependencies import (
+    UserPermissionContext,
+    get_current_user_context,
+    require_admin,
+    require_developer,
+)
 from app.core.config import get_settings
 from app.db.database import get_db
 from app.repositories.audit_repo import AuditRepository
-from app.services.user_service import UserContext, get_display_name
+from app.services.user_service import get_display_name
 from app.websocket.manager import manager
 
 router = APIRouter(tags=["admin"])
@@ -18,23 +24,23 @@ router = APIRouter(tags=["admin"])
 @router.get("/admin/ping")
 @router.get("/ping_admin")
 async def ping(
-    user: UserContext = Depends(get_current_user),
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     db: AsyncSession = Depends(get_db),
 ):
     settings = get_settings()
-    if user.is_developer:
+    if ctx.is_developer:
         return {"status": "ok"}
 
-    if user.id in settings.admin_ids_list:
-        name = get_display_name(user)
+    if ctx.user.id in settings.admin_ids_list:
+        name = get_display_name(ctx.user)
         repo = AuditRepository(db)
-        await repo.upsert_admin_online(user.id, name)
+        await repo.upsert_admin_online(ctx.user.id, name)
         await db.commit()
 
         await manager.broadcast(
             {
                 "type": "admin_status",
-                "user_id": user.id,
+                "user_id": ctx.user.id,
                 "last_seen": time.time(),
             }
         )
@@ -45,7 +51,7 @@ async def ping(
 @router.get("/admin/users")
 @router.get("/admin_users")
 async def get_admin_users(
-    user: UserContext = Depends(require_admin),
+    ctx: Annotated[UserPermissionContext, Depends(require_admin)],
     db: AsyncSession = Depends(get_db),
 ):
     settings = get_settings()
@@ -89,13 +95,21 @@ async def get_admin_users(
 
 @router.get("/init")
 @router.get("/admin/init")
-async def get_init(user: UserContext = Depends(get_current_user)):
+async def get_init(
+    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+):
+    if not ctx.groups_roles and not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Access denied: Not in any group")
+
     settings = get_settings()
     return {
         "role": "admin"
-        if (user.id in settings.admin_ids_list or user.id == settings.developer_id)
+        if (
+            ctx.user.id in settings.admin_ids_list
+            or ctx.user.id == settings.developer_id
+        )
         else "viewer",
-        "user": {"id": user.id, "first_name": user.first_name},
+        "user": {"id": ctx.user.id, "first_name": ctx.user.first_name},
     }
 
 
@@ -106,7 +120,7 @@ async def get_admin_logs(
     limit: int = 20,
     user_filter: str = "all",
     action_filter: str = "all",
-    user: UserContext = Depends(require_admin),
+    ctx: Annotated[UserPermissionContext, Depends(require_admin)] = None,
     db: AsyncSession = Depends(get_db),
 ):
     repo = AuditRepository(db)
@@ -133,7 +147,7 @@ async def get_admin_logs(
 @router.delete("/logs/{log_id}")
 async def delete_log(
     log_id: int,
-    user: UserContext = Depends(require_developer),
+    ctx: Annotated[UserPermissionContext, Depends(require_developer)] = None,
     db: AsyncSession = Depends(get_db),
 ):
     repo = AuditRepository(db)
