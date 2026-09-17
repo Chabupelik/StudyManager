@@ -185,12 +185,16 @@ async def assign_duties(
         if group_obj and group_obj.tg_chat_id
         else settings.group_id
     )
+    vk_peer_id = (
+        group_obj.vk_peer_id
+        if group_obj and group_obj.vk_peer_id
+        else settings.vk_chat_peer_id
+    )
 
     background_tasks.add_task(
         telegram.send_message, tg_chat_id, tg_text, "HTML", keyboard
     )
-    # TODO: Also use vk_peer_id if needed, but keeping current behavior for VK
-    background_tasks.add_task(vk.send_message, tg_text)
+    background_tasks.add_task(vk.send_message, tg_text, vk_peer_id)
 
     short_names = ", ".join(n.split()[0] for n in assigned_names)
     background_tasks.add_task(

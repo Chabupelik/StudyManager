@@ -12,13 +12,14 @@ def strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
-async def send_message(text: str) -> None:
+async def send_message(text: str, peer_id: int | None = None) -> None:
     settings = get_settings()
-    if not settings.vk_token or not settings.vk_chat_peer_id:
+    target_peer_id = peer_id or settings.vk_chat_peer_id
+    if not settings.vk_token or not target_peer_id:
         return
 
     params = {
-        "peer_id": settings.vk_chat_peer_id,
+        "peer_id": target_peer_id,
         "message": strip_html(text),
         "random_id": int(time.time() * 1000),
         "access_token": settings.vk_token,
