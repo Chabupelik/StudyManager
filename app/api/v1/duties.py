@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.data.students_data import EXCLUDED_DUTY_STUDENT_IDS
 from app.db.database import async_session_maker, get_db
 from app.integrations import telegram, vk
+from app.models.group import Group
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
@@ -146,7 +147,9 @@ async def assign_duties(
     undo_id = str(uuid.uuid4())[:8]
 
     for user_id in data.student_ids:
-        undo_data.append({"id": user_id, "date": current_duties.get(user_id)})
+        undo_data.append(
+            {"id": user_id, "group_id": group_id, "date": current_duties.get(user_id)}
+        )
         await duty_repo.upsert(group_id, user_id, data.date)
         user_obj = await db.get(User, user_id)
         name = user_obj.full_name if user_obj else f"Пользователь {user_id}"
@@ -176,9 +179,17 @@ async def assign_duties(
         ]
     }
 
-    background_tasks.add_task(
-        telegram.send_message, settings.group_id, tg_text, "HTML", keyboard
+    group_obj = await db.get(Group, group_id)
+    tg_chat_id = (
+        group_obj.tg_chat_id
+        if group_obj and group_obj.tg_chat_id
+        else settings.group_id
     )
+
+    background_tasks.add_task(
+        telegram.send_message, tg_chat_id, tg_text, "HTML", keyboard
+    )
+    # TODO: Also use vk_peer_id if needed, but keeping current behavior for VK
     background_tasks.add_task(vk.send_message, tg_text)
 
     short_names = ", ".join(n.split()[0] for n in assigned_names)

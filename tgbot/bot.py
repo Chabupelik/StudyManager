@@ -1507,18 +1507,22 @@ async def process_web_undo(callback: CallbackQuery):
     if row:
         undo_data = json.loads(row["data"])
         for item in undo_data:
+            gid = item.get("group_id", 2)
             if item.get("date") is None:
                 await pool.execute(
-                    "DELETE FROM duties WHERE user_id = $1 AND group_id = 2", item["id"]
+                    "DELETE FROM duties WHERE user_id = $1 AND group_id = $2",
+                    item["id"],
+                    gid,
                 )
             else:
                 await pool.execute(
                     """
-                    INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
+                    INSERT INTO duties (group_id, user_id, date) VALUES ($3, $1, $2)
                     ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
                     """,
                     item["id"],
                     item["date"],
+                    gid,
                 )
         await pool.execute("DELETE FROM web_undos WHERE undo_id = $1", undo_id)
         restored = True
