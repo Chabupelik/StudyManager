@@ -7,7 +7,7 @@ const attendanceStore = useAttendanceStore();
 const reason = ref('');
 const applyAllDay = ref(false);
 
-const templates = ['Больничный', 'Заявление', 'Объяснительная', 'Врач', 'Военкомат'];
+const templates = ['Больничный', 'Заявление', 'Объяснительная', 'Врач', 'Военкомат', "Автошкола"];
 
 watch(
   () => attendanceStore.pendingStudent,
