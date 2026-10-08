@@ -13,9 +13,8 @@ export const useDutyStore = defineStore('duties', () => {
   const saving = ref(false);
 
   function initDefaultDate() {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    dutyDate.value = toApiDate(tomorrow);
+    const today = new Date();
+    dutyDate.value = toApiDate(today);
   }
 
   async function loadDuties() {
