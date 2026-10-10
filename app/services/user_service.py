@@ -85,6 +85,26 @@ def get_display_name(user: UserContext) -> str:
     return user.first_name or f"Пользователь {user.id}"
 
 
+async def refresh_user_cache_entry(tg_user_id: int, session: AsyncSession) -> None:
+    """Обновляет запись в кэше _tg_id_to_name для конкретного пользователя.
+
+    Пропускает запрос к БД, если имя уже есть в кэше (пользователь уже
+    заходил с момента старта сервера). Это позволяет подхватить новых
+    пользователей (напр., Четвериков Вадим) без перезапуска.
+    """
+    if tg_user_id in _tg_id_to_name:
+        return
+
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    result = await session.execute(select(User).where(User.tg_user_id == tg_user_id))
+    user_obj = result.scalar_one_or_none()
+    if user_obj and user_obj.full_name:
+        _tg_id_to_name[tg_user_id] = user_obj.full_name
+
+
 def get_name_by_student_id(student_id: int) -> str:
     if not _id_to_name:
         from app.data.students_data import STUDENTS

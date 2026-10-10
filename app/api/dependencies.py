@@ -19,7 +19,7 @@ from app.db.database import get_db
 from app.db.redis_client import get_redis
 from app.models.group_member import MemberRole
 from app.services.permissions_service import get_user_permissions
-from app.services.user_service import UserContext
+from app.services.user_service import UserContext, refresh_user_cache_entry
 
 _AUTH_DATE_MAX_AGE = 86400  # 24 hours — Telegram recommendation
 
@@ -133,6 +133,9 @@ async def get_current_user_context(
     their group-role permissions from Redis/Postgres.
     """
     permissions = await get_user_permissions(user.id, session, redis)
+    # Обновляем кэш имени для текущего пользователя из БД, чтобы имя
+    # из таблицы users (напр., Четвериков Вадим) отображалось верно даже без перезапуска
+    await refresh_user_cache_entry(user.id, session)
     return UserPermissionContext(
         user=user,
         is_superadmin=permissions["is_superadmin"],
