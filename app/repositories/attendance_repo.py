@@ -101,6 +101,19 @@ class AttendanceRepository(BaseRepository):
         )
         return list(result.scalars().all())
 
+    async def get_stats_for_period(
+        self, group_id: int, start_date: str, end_date: str
+    ) -> list[Attendance]:
+        result = await self.session.execute(
+            select(Attendance).where(
+                Attendance.group_id == group_id,
+                Attendance.status > 0,
+                Attendance.date >= start_date,
+                Attendance.date <= end_date,
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_stats_for_month(
         self, group_id: int, month_prefix: str
     ) -> list[Attendance]:

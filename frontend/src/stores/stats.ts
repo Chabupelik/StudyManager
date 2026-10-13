@@ -84,10 +84,13 @@ export const useStatsStore = defineStore('stats', () => {
     const m = String(currentMonth.value.getMonth() + 1).padStart(2, '0');
 
     try {
+      const scheduleStore = useScheduleStore();
+      const groupId = scheduleStore.selectedGroupId;
+      const groupIdParam = groupId ? `&group_id=${groupId}` : '';
       const [absRes, subjRes] = await Promise.all([
-        ApiClient.get<StudentAbsencesResponse>(`/api/student_absences?student_id=${student.id}`),
+        ApiClient.get<StudentAbsencesResponse>(`/api/student_absences?student_id=${student.id}${groupIdParam}`),
         ApiClient.get<StudentSubjectStatsResponse>(
-          `/api/student_subject_stats?student_id=${student.id}&year=${y}&month=${m}`
+          `/api/student_subject_stats?student_id=${student.id}&year=${y}&month=${m}${groupIdParam}`
         ),
       ]);
       absences.value = absRes.absences || [];

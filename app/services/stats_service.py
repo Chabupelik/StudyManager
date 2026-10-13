@@ -69,6 +69,20 @@ def compute_total_hours(
     return total
 
 
+def get_semester_dates(year: int, month: int) -> tuple[str, str]:
+    """
+    Returns (start_date, end_date) strings formatted as 'YYYY-MM-DD' for the semester
+    containing the given (year, month).
+
+    Semester 1 (Autumn): September 1 to December 31
+    Semester 2 (Spring): January 1 to August 31
+    """
+    if 9 <= month <= 12:
+        return f"{year}-09-01", f"{year}-12-31"
+    else:
+        return f"{year}-01-01", f"{year}-08-31"
+
+
 async def compute_month_hours(
     session: AsyncSession,
     group_id: int,
@@ -79,6 +93,18 @@ async def compute_month_hours(
     _, last_day = calendar.monthrange(year, month)
     from_str = f"{year}-{month:02d}-01"
     to_str = f"{year}-{month:02d}-{last_day:02d}"
+    base_lessons = await _get_base_lessons(session, group_id)
+    return compute_total_hours(overrides, base_lessons, from_str, to_str)
+
+
+async def compute_semester_hours(
+    session: AsyncSession,
+    group_id: int,
+    year: int,
+    month: int,
+    overrides: list[Override],
+) -> int:
+    from_str, to_str = get_semester_dates(year, month)
     base_lessons = await _get_base_lessons(session, group_id)
     return compute_total_hours(overrides, base_lessons, from_str, to_str)
 
@@ -98,13 +124,13 @@ async def compute_lifetime_hours(
 
 
 def aggregate_student_stats(
-    all_records: list[Attendance],
+    semester_records: list[Attendance],
     month_records: list[Attendance],
 ) -> dict[int, dict]:
     total: dict[int, dict] = {}
     month: dict[int, dict] = {}
 
-    for r in all_records:
+    for r in semester_records:
         sid = r.user_id
         if sid not in total:
             total[sid] = {"nb": 0, "uv": 0}
@@ -162,25 +188,35 @@ async def compute_subject_stats(
     absences: list[Attendance],
     overrides: list[Override],
     month_prefix: str,
+    semester_start: str | None = None,
+    semester_end: str | None = None,
 ) -> list[dict]:
     override_map = _build_override_map(overrides)
     today_dt = datetime.now()
 
     base_lessons = await _get_base_lessons(session, group_id)
 
-    start_dates = [l.valid_from for l, _ in base_lessons if l.valid_from]
-    if not start_dates:
-        return []
-    earliest_dt = min(start_dates)
-    if isinstance(earliest_dt, datetime):
-        earliest_dt = earliest_dt.date()
+    if semester_start:
+        sem_start_dt = datetime.strptime(semester_start, "%Y-%m-%d").date()
+        curr_dt = datetime(sem_start_dt.year, sem_start_dt.month, sem_start_dt.day)
+    else:
+        start_dates = [l.valid_from for l, _ in base_lessons if l.valid_from]
+        if not start_dates:
+            return []
+        earliest_dt = min(start_dates)
+        if isinstance(earliest_dt, datetime):
+            earliest_dt = earliest_dt.date()
+        curr_dt = datetime(earliest_dt.year, earliest_dt.month, earliest_dt.day)
 
-    # Convert earliest_dt to datetime for loop
-    curr_dt = datetime(earliest_dt.year, earliest_dt.month, earliest_dt.day)
+    if semester_end:
+        sem_end_dt = datetime.strptime(semester_end, "%Y-%m-%d")
+        end_limit = min(sem_end_dt, today_dt)
+    else:
+        end_limit = today_dt
 
     stats: dict[str, dict] = {}
 
-    while curr_dt <= today_dt:
+    while curr_dt <= end_limit:
         d_str = curr_dt.strftime("%Y-%m-%d")
         wday = curr_dt.weekday()
 
@@ -214,6 +250,10 @@ async def compute_subject_stats(
         curr_dt += timedelta(days=1)
 
     for a in absences:
+        if semester_start and not (
+            semester_start <= a.date <= (semester_end or "9999-12-31")
+        ):
+            continue
         d_str, t_str = a.date, a.time
         wday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
         name, _ = _get_subject_at_memory(d_str, t_str, wday, override_map, base_lessons)

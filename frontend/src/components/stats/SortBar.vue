@@ -6,7 +6,7 @@ const statsStore = useStatsStore();
 const options: Array<{ id: SortType; label: string }> = [
   { id: 'name', label: 'По имени' },
   { id: 'month', label: 'Пропуски (месяц)' },
-  { id: 'total', label: 'Пропуски (всего)' },
+  { id: 'total', label: 'Пропуски (семестр)' },
 ];
 </script>
 
