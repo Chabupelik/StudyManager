@@ -1,3 +1,5 @@
+export type AttendanceFilter = 'all' | 'absent' | 'excused' | 'unexcused';
+
 export interface StudentAttendance {
   id: number;
   tg_id: number;

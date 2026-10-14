@@ -143,6 +143,12 @@ function handleOpenReason(s: StudentAttendance) {
             @toggle-status="handleStatusToggle"
             @open-reason="handleOpenReason"
           />
+          <div
+            v-if="attendanceStore.filteredStudents.length === 0"
+            class="p-8 text-center text-app-muted text-xs font-semibold"
+          >
+            В этой категории нет студентов
+          </div>
         </template>
       </div>
     </div>

@@ -2,13 +2,21 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { ApiClient } from '../api/client';
 import { useScheduleStore } from './schedule';
-import type { StudentAttendance, LessonDetailsResponse } from '../types/attendance';
+import type { StudentAttendance, LessonDetailsResponse, AttendanceFilter } from '../types/attendance';
 
 export const useAttendanceStore = defineStore('attendance', () => {
   const scheduleStore = useScheduleStore();
   const students = ref<StudentAttendance[]>([]);
   const loading = ref(false);
-  const showOnlyAbsent = ref(false);
+  const filter = ref<AttendanceFilter>('all');
+
+  // Compatibility getter/setter for showOnlyAbsent
+  const showOnlyAbsent = computed({
+    get: () => filter.value !== 'all',
+    set: (val: boolean) => {
+      filter.value = val ? 'absent' : 'all';
+    },
+  });
 
   // Lesson metadata
   const lessonTime = ref('');
@@ -21,8 +29,16 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const showReasonModal = ref(false);
 
   const filteredStudents = computed(() => {
-    if (!showOnlyAbsent.value) return students.value;
-    return students.value.filter((s) => s.status > 0);
+    if (filter.value === 'absent') {
+      return students.value.filter((s) => s.status > 0);
+    }
+    if (filter.value === 'excused') {
+      return students.value.filter((s) => s.status === 2);
+    }
+    if (filter.value === 'unexcused') {
+      return students.value.filter((s) => s.status === 1);
+    }
+    return students.value;
   });
 
   const totalAbsent = computed(() => students.value.filter((s) => s.status > 0).length);
@@ -34,7 +50,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     lessonName.value = name;
     lessonTeacher.value = teacher;
     isCanceled.value = canceled;
-    showOnlyAbsent.value = false;
+    filter.value = 'all';
 
     loading.value = true;
     try {
@@ -105,6 +121,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
   return {
     students,
     loading,
+    filter,
     showOnlyAbsent,
     lessonTime,
     lessonName,
