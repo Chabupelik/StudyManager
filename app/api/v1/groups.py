@@ -393,6 +393,17 @@ async def update_member(
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.tg_user_id is not None:
+        conflict = await session.execute(
+            select(User).where(
+                User.tg_user_id == body.tg_user_id,
+                User.id != user_id,
+            )
+        )
+        if conflict.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"tg_user_id {body.tg_user_id} is already taken by another user",
+            )
         user.tg_user_id = body.tg_user_id
     if body.vk_user_id is not None:
         user.vk_user_id = body.vk_user_id
