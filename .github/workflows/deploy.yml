@@ -51,7 +51,7 @@ jobs:
           npx vue-tsc --noEmit
           npm run build
 
-      - name: Deploy everything via single SSH session
+      - name: Deploy containers and prepare dist dir
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -63,20 +63,22 @@ jobs:
             cd ~/StudyManager
             git fetch origin main
             git reset --hard origin/main
+            rm -rf frontend/dist/*
+            mkdir -p frontend/dist
             docker compose up -d --build
             docker compose exec -T backend alembic upgrade head
             docker image prune -f
 
-      - name: Sync Frontend Dist (rsync)
-        uses: easingthemes/ssh-deploy@v5.1.0
+      - name: Copy built dist to VPS
+        uses: appleboy/scp-action@v0.1.7
         with:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          REMOTE_HOST: ${{ secrets.SERVER_IP }}
-          REMOTE_USER: ${{ secrets.SERVER_USER }}
-          REMOTE_PORT: ${{ vars.SERVER_PORT || 22 }}
-          SOURCE: "frontend/dist/"
-          TARGET: "StudyManager/frontend/dist"
-          ARGS: "-rlgoDzvc --delete"
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ vars.SERVER_PORT || 22 }}
+          source: "frontend/dist/*"
+          target: "~/StudyManager/frontend/dist"
+          strip_components: 2
 
   notify:
     name: "Telegram notification"
