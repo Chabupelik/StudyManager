@@ -15,7 +15,7 @@ from app.repositories.user_repo import UserRepository
 from app.services.permissions_service import get_user_permissions
 from app.services.user_service import AuthUser
 
-_AUTH_DATE_MAX_AGE = 86400
+_AUTH_DATE_MAX_AGE = 86400 * 7
 
 
 class AuthService:

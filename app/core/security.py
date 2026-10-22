@@ -26,11 +26,13 @@ def validate_tg_init_data(init_data: str) -> dict | None:
             b"WebAppData", settings.bot_token.encode(), hashlib.sha256
         ).digest()
         expected = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
-
         if not hmac.compare_digest(expected, hash_tg):
             return None
 
-        return json.loads(parsed.get("user", "{}"))
+        user_data = json.loads(parsed.get("user", "{}"))
+        if "auth_date" in parsed:
+            user_data["auth_date"] = parsed["auth_date"]
+        return user_data
     except Exception as e:
         logger.warning("Telegram initData validation failed: %s", e)
         return None
