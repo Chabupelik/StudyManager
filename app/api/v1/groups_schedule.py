@@ -8,14 +8,12 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import (
-    UserPermissionContext,
-    require_group_role,
-)
+from app.api.dependencies import require_group_role
 from app.db.database import DbSession
 from app.models.group import Group
 from app.models.group_member import MemberRole
 from app.models.schedule_new import Lesson, Schedule
+from app.services.user_service import AuthUser
 
 router = APIRouter(prefix="/groups", tags=["schedule"])
 
@@ -104,8 +102,8 @@ async def _get_lessons_for_schedule(
 async def create_schedule(
     group_id: int,
     body: ScheduleCreateRequest,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
     session: DbSession,
@@ -150,8 +148,8 @@ async def add_lesson(
     group_id: int,
     schedule_id: int,
     body: LessonCreateRequest,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
     session: DbSession,
@@ -183,8 +181,8 @@ async def add_lesson(
 )
 async def get_today_schedule(
     group_id: int,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(
             require_group_role(
                 [
@@ -237,8 +235,8 @@ async def get_today_schedule(
 )
 async def get_full_schedule(
     group_id: int,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(
             require_group_role(
                 [

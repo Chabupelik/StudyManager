@@ -16,10 +16,6 @@ class AuthUser:
     groups_roles: dict[str, str] = field(default_factory=dict)
 
     @property
-    def user(self) -> AuthUser:
-        return self
-
-    @property
     def is_developer(self) -> bool:
         return self.id == get_settings().developer_id
 
@@ -47,9 +43,6 @@ class AuthUser:
         if self.is_superadmin:
             return True
         return self.groups_roles.get(str(group_id)) in allowed_roles
-
-
-UserContext = AuthUser
 
 
 def get_display_name(user: AuthUser) -> str:

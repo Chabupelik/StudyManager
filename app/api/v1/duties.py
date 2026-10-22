@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import select
 
-from app.api.dependencies import CurrentUserContext
+from app.api.dependencies import CurrentUser
 from app.core.config import get_settings
 from app.db.database import DbSession, async_session_maker
 from app.integrations import telegram, vk
@@ -40,7 +40,7 @@ async def _log_duties_action(
 
 @router.get("/duties", response_model=DutiesResponse)
 async def get_duties(
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     group_id: int | None = None,
 ):
@@ -48,13 +48,20 @@ async def get_duties(
     date_str = now.strftime("%Y-%m-%d")
     current_time_str = now.strftime("%H:%M")
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         return DutiesResponse(duties=[])
 
     if group_id is None:
-        group_id = int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+        group_id = (
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
+        )
 
-    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     duty_repo = DutyRepository(db)
@@ -126,14 +133,16 @@ async def get_duties(
 async def assign_duties(
     data: DutyAssignRequest,
     background_tasks: BackgroundTasks,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     settings = get_settings()
     duty_repo = DutyRepository(db)
 
     group_id = data.group_id
-    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
+    if not current_user.is_superadmin and str(group_id) not in (
+        current_user.groups_roles or {}
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     current_duties = await duty_repo.get_duties_map(group_id)
@@ -155,7 +164,7 @@ async def assign_duties(
 
     await manager.broadcast({"type": "update_duties"})
 
-    admin_name = get_display_name(ctx.user)
+    admin_name = get_display_name(current_user)
     date_nice = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m.%Y")
     tg_text = (
         f"🔔 <b>Назначены дежурные (через сайт)!</b>\n"
@@ -164,9 +173,7 @@ async def assign_duties(
     )
     for name in assigned_names:
         tg_text += f"✅ <b>{name}</b>\n"
-    tg_text += (
-        f'\n👤 <b>Назначил:</b> <a href="tg://user?id={ctx.user.id}">{admin_name}</a>'
-    )
+    tg_text += f'\n👤 <b>Назначил:</b> <a href="tg://user?id={current_user.id}">{admin_name}</a>'
 
     keyboard = {
         "inline_keyboard": [
@@ -197,6 +204,6 @@ async def assign_duties(
         admin_name,
         "Назначение дежурных",
         f"Дата: {data.date}. Дежурят: {short_names}",
-        ctx.user.id,
+        current_user.id,
     )
     return {"status": "ok"}

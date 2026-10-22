@@ -7,8 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 
 from app.api.dependencies import (
-    CurrentUserContext,
-    UserPermissionContext,
+    CurrentUser,
     require_group_role,
 )
 from app.db.database import DbSession
@@ -19,6 +18,7 @@ from app.models.group import Group
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.services.permissions_service import invalidate_user_permissions
+from app.services.user_service import AuthUser
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -54,10 +54,10 @@ class MemberResponse(BaseModel):
 @router.post("", response_model=GroupResponse, status_code=201)
 async def create_group(
     body: GroupCreateRequest,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> GroupResponse:
-    if not ctx.is_superadmin:
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
     existing = await session.execute(select(Group).where(Group.name == body.name))
@@ -92,10 +92,10 @@ class GroupUpdateRequest(BaseModel):
 async def update_group(
     group_id: int,
     body: GroupUpdateRequest,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> GroupResponse:
-    if not ctx.is_superadmin:
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
     group = await session.get(Group, group_id)
@@ -133,10 +133,10 @@ async def update_group(
 )
 async def delete_group(
     group_id: int,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     session: DbSession,
 ):
-    if not ctx.is_superadmin:
+    if not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
     group = await session.get(Group, group_id)
@@ -153,14 +153,14 @@ async def delete_group(
 
 @router.get("/my", response_model=list[GroupResponse])
 async def get_my_groups(
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     session: DbSession,
 ) -> list[GroupResponse]:
-    if ctx.is_superadmin:
+    if current_user.is_superadmin:
         result = await session.execute(select(Group).order_by(Group.name))
         groups = result.scalars().all()
     else:
-        group_ids = [int(gid) for gid in ctx.groups_roles]
+        group_ids = [int(gid) for gid in current_user.groups_roles]
         if not group_ids:
             return []
         result = await session.execute(
@@ -185,8 +185,8 @@ async def get_my_groups(
 )
 async def list_members(
     group_id: int,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(
             require_group_role(
                 [
@@ -223,8 +223,8 @@ async def list_members(
 async def add_member(
     group_id: int,
     body: AddMemberRequest,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
     session: DbSession,
@@ -307,8 +307,8 @@ async def update_member(
     group_id: int,
     user_id: int,
     body: UpdateMemberRequest,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
     session: DbSession,
@@ -369,8 +369,8 @@ async def update_member(
 async def remove_member(
     group_id: int,
     user_id: int,
-    ctx: Annotated[
-        UserPermissionContext,
+    current_user: Annotated[
+        AuthUser,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
     session: DbSession,

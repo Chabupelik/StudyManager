@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import select
 
-from app.api.dependencies import CurrentUserContext
+from app.api.dependencies import CurrentUser
 from app.db.database import DbSession, async_session_maker
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
@@ -39,12 +39,14 @@ async def get_lesson_details(
     date: str,
     time: str,
     group_id: int,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     _parse_date(date)
 
-    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
+    if not current_user.is_superadmin and str(group_id) not in (
+        current_user.groups_roles or {}
+    ):
         raise HTTPException(
             status_code=403, detail="Forbidden: No access to this group"
         )
@@ -118,13 +120,15 @@ async def _log_attendance_action(
 async def update_attendance(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     _parse_date(data.date)
 
     group_id = data.group_id
-    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
+    if not current_user.is_superadmin and str(group_id) not in (
+        current_user.groups_roles or {}
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
@@ -163,7 +167,7 @@ async def update_attendance(
         }
     )
 
-    admin_name = get_display_name(ctx.user)
+    admin_name = get_display_name(current_user)
     stat_str = "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
     user_obj = await db.get(User, data.student_id)
     student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
@@ -177,7 +181,7 @@ async def update_attendance(
         admin_name,
         "Изменение отметки",
         log_details,
-        ctx.user.id,
+        current_user.id,
     )
     return {"status": "ok"}
 
@@ -186,13 +190,15 @@ async def update_attendance(
 async def update_attendance_day(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     _parse_date(data.date)
 
     group_id = data.group_id
-    if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
+    if not current_user.is_superadmin and str(group_id) not in (
+        current_user.groups_roles or {}
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
@@ -222,7 +228,7 @@ async def update_attendance_day(
         }
     )
 
-    admin_name = get_display_name(ctx.user)
+    admin_name = get_display_name(current_user)
     user_obj = await db.get(User, data.student_id)
     student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
     stat_str = "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
@@ -231,6 +237,6 @@ async def update_attendance_day(
         admin_name,
         "Отметка на весь день",
         f"Студент {student_name} ({data.date}) → {stat_str}",
-        ctx.user.id,
+        current_user.id,
     )
     return {"status": "ok"}

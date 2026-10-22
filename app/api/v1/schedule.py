@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 
 from app.api.dependencies import (
-    CurrentUserContext,
+    CurrentUser,
     get_request_details,
 )
 from app.db.database import DbSession, async_session_maker
@@ -39,7 +39,7 @@ async def _log_schedule_action(
 @router.get("/schedule", response_model=ScheduleResponse)
 async def get_schedule(
     date: str,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     group_id: int | None = None,
 ):
@@ -48,16 +48,23 @@ async def get_schedule(
     current_date_str = now.strftime("%Y-%m-%d")
     current_time_str = now.strftime("%H:%M") if date == current_date_str else None
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         return ScheduleResponse(date=date, lessons=[])
 
     target_group_id = (
         group_id
         if group_id
-        else (int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1)
+        else (
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
+        )
     )
 
-    if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(target_group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     att_repo = AttendanceRepository(db)
@@ -76,23 +83,32 @@ async def get_schedule(
 async def update_override(
     data: OverrideUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     req: dict = Depends(get_request_details),
 ):
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     target_group_id = (
         data.group_id
         if data.group_id
-        else (int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1)
+        else (
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
+        )
     )
 
-    if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(target_group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    if not ctx.is_superadmin and ctx.groups_roles.get(str(target_group_id)) not in [
+    if not current_user.is_superadmin and current_user.groups_roles.get(
+        str(target_group_id)
+    ) not in [
         "headman",
         "deputy",
         "curator",
@@ -117,14 +133,14 @@ async def update_override(
     await db.commit()
     await manager.broadcast({"type": "override", "date": data.date})
 
-    admin_name = get_display_name(ctx.user)
+    admin_name = get_display_name(current_user)
     action = "Отмена пары" if data.is_canceled else "Замена пары"
     background_tasks.add_task(
         _log_schedule_action,
         admin_name,
         action,
         f"{data.date} {data.time} → {data.new_name}",
-        ctx.user.id,
+        current_user.id,
     )
 
     return {"status": "ok"}
@@ -133,10 +149,13 @@ async def update_override(
 @router.get("/admin/base", response_model=list[dict])
 async def get_base_schedule(
     group_id: int,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
-    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     stmt = select(Schedule).where(Schedule.group_id == group_id)
@@ -192,10 +211,13 @@ async def create_base_lesson(
     group_id: int,
     day_of_week: int,
     data: dict,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
-    if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     stmt = select(Schedule).where(
@@ -232,7 +254,7 @@ async def create_base_lesson(
 async def update_base_lesson(
     lesson_id: int,
     data: dict,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     lesson = await db.get(Lesson, lesson_id)
@@ -240,7 +262,10 @@ async def update_base_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     schedule = await db.get(Schedule, lesson.schedule_id)
-    if not ctx.is_superadmin and str(schedule.group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(schedule.group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if "name" in data:
@@ -276,7 +301,7 @@ async def update_base_lesson(
 @router.delete("/admin/base/lesson/{lesson_id}")
 async def delete_base_lesson(
     lesson_id: int,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
 ):
     lesson = await db.get(Lesson, lesson_id)
@@ -284,7 +309,10 @@ async def delete_base_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     schedule = await db.get(Schedule, lesson.schedule_id)
-    if not ctx.is_superadmin and str(schedule.group_id) not in ctx.groups_roles:
+    if (
+        not current_user.is_superadmin
+        and str(schedule.group_id) not in current_user.groups_roles
+    ):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     await db.delete(lesson)

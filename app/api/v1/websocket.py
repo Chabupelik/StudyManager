@@ -10,7 +10,7 @@ from app.core.security import validate_tg_init_data, validate_vk_sign
 from app.db.database import async_session_maker
 from app.models.user import User
 from app.services.audit_service import log_action
-from app.services.user_service import UserContext, get_display_name
+from app.services.user_service import AuthUser, get_display_name
 from app.websocket.manager import manager
 
 logger = logging.getLogger("studymanager_api")
@@ -40,7 +40,7 @@ async def websocket_endpoint(websocket: WebSocket):
             first_name = tg_user.get("first_name", "")
             last_name = tg_user.get("last_name", "")
             full_name = f"{first_name} {last_name}".strip()
-            ctx = UserContext(
+            auth_user = AuthUser(
                 id=int(tg_user["id"]),
                 first_name=first_name,
                 full_name=full_name,
@@ -72,21 +72,21 @@ async def websocket_endpoint(websocket: WebSocket):
                 if len(user_obj.full_name.split()) > 1
                 else user_obj.full_name
             )
-            ctx = UserContext(
+            auth_user = AuthUser(
                 id=user_obj.tg_user_id or user_obj.id,
                 first_name=first_name,
                 full_name=user_obj.full_name,
                 platform="vk",
             )
 
-        user_name = get_display_name(ctx)
+        user_name = get_display_name(auth_user)
 
         async with async_session_maker() as session:
             await log_action(
                 session,
                 user_name,
                 "WS Connected",
-                f"IP: {ip}, Platform: {ctx.platform}, Agent: {user_agent}",
+                f"IP: {ip}, Platform: {auth_user.platform}, Agent: {user_agent}",
             )
 
         while True:

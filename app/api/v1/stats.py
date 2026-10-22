@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from app.api.dependencies import CurrentUserContext
+from app.api.dependencies import CurrentUser
 from app.db.database import DbSession
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
@@ -32,7 +32,7 @@ router = APIRouter(tags=["stats"])
 async def get_stats(
     year: str,
     month: str,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     group_id: int | None = None,
 ):
@@ -41,7 +41,7 @@ async def get_stats(
     m_int = int(month)
     sem_start, sem_end = get_semester_dates(y_int, m_int)
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         return {
             "total_month_hours": 0,
             "total_lifetime_hours": 0,
@@ -50,12 +50,17 @@ async def get_stats(
         }
 
     if group_id is not None:
-        if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        if (
+            not current_user.is_superadmin
+            and str(group_id) not in current_user.groups_roles
+        ):
             raise HTTPException(status_code=403, detail="Forbidden")
         target_group_id = group_id
     else:
         target_group_id = (
-            int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
         )
 
     att_repo = AttendanceRepository(db)
@@ -116,20 +121,25 @@ async def get_stats(
 @router.get("/student_absences")
 async def get_student_absences(
     student_id: int,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     group_id: int | None = None,
 ):
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         return {"absences": []}
 
     if group_id is not None:
-        if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        if (
+            not current_user.is_superadmin
+            and str(group_id) not in current_user.groups_roles
+        ):
             raise HTTPException(status_code=403, detail="Forbidden")
         target_group_id = group_id
     else:
         target_group_id = (
-            int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
         )
 
     att_repo = AttendanceRepository(db)
@@ -179,7 +189,7 @@ async def get_student_subject_stats(
     student_id: int,
     year: str,
     month: str,
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     db: DbSession,
     group_id: int | None = None,
 ):
@@ -188,16 +198,21 @@ async def get_student_subject_stats(
     m_int = int(month)
     sem_start, sem_end = get_semester_dates(y_int, m_int)
 
-    if not ctx.groups_roles and not ctx.is_superadmin:
+    if not current_user.groups_roles and not current_user.is_superadmin:
         return {"subjects": []}
 
     if group_id is not None:
-        if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
+        if (
+            not current_user.is_superadmin
+            and str(group_id) not in current_user.groups_roles
+        ):
             raise HTTPException(status_code=403, detail="Forbidden")
         target_group_id = group_id
     else:
         target_group_id = (
-            int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
         )
 
     att_repo = AttendanceRepository(db)

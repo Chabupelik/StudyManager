@@ -19,8 +19,6 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
-CurrentUserContext = CurrentUser
-UserPermissionContext = AuthUser
 
 
 async def require_admin(
