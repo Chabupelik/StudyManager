@@ -151,7 +151,8 @@ async def create_schedule(
 
     schedule = Schedule(group_id=group_id, day_of_week=body.day_of_week)
     session.add(schedule)
-    await session.flush()
+    await session.commit()
+    await session.refresh(schedule)
 
     return ScheduleResponse(
         id=schedule.id,
@@ -202,7 +203,8 @@ async def add_lesson(
         valid_until=body.valid_until,
     )
     session.add(lesson)
-    await session.flush()
+    await session.commit()
+    await session.refresh(lesson)
     return _lesson_to_response(lesson)
 
 

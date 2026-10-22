@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -11,8 +11,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import get_settings
-
-logger = logging.getLogger(__name__)
 
 _settings = get_settings()
 
@@ -33,13 +31,7 @@ async_session_maker = async_sessionmaker(
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            logger.exception("Database session failed, rolling back transaction")
-            await session.rollback()
-            raise
+        yield session
 
 
-DbSession = Annotated[AsyncSession, "get_db"]
+DbSession = Annotated[AsyncSession, Depends(get_db)]

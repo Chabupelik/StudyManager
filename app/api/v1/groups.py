@@ -72,7 +72,8 @@ async def create_group(
         vk_peer_id=body.vk_peer_id,
     )
     session.add(group)
-    await session.flush()
+    await session.commit()
+    await session.refresh(group)
     return GroupResponse(
         id=group.id,
         name=group.name,
@@ -114,7 +115,8 @@ async def update_group(
     if body.vk_peer_id is not None:
         group.vk_peer_id = body.vk_peer_id
 
-    await session.flush()
+    await session.commit()
+    await session.refresh(group)
     return GroupResponse(
         id=group.id,
         name=group.name,
@@ -150,7 +152,7 @@ async def delete_group(
     await session.execute(delete(Duty).where(Duty.group_id == group_id))
 
     await session.delete(group)
-    await session.flush()
+    await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -284,7 +286,7 @@ async def add_member(
     else:
         member.role = body.role
 
-    await session.flush()
+    await session.commit()
 
     if user.tg_user_id:
         await invalidate_user_permissions(user.tg_user_id, redis)
@@ -350,7 +352,7 @@ async def update_member(
     if body.role is not None:
         member.role = body.role
 
-    await session.flush()
+    await session.commit()
     if user.tg_user_id:
         await invalidate_user_permissions(user.tg_user_id, redis)
 
@@ -390,7 +392,7 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="Member not found in this group")
 
     await session.delete(member)
-    await session.flush()
+    await session.commit()
 
     user = await session.get(User, user_id)
     if user and user.tg_user_id:
