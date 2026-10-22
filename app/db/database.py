@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 _settings = get_settings()
 
@@ -34,6 +37,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
+            logger.exception("Database session failed, rolling back transaction")
             await session.rollback()
             raise
 

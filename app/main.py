@@ -247,5 +247,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception:
+    except Exception as e:
+        logger.warning("Websocket connection terminated with error: %s", e)
         manager.disconnect(websocket)

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, unquote_plus, urlencode
@@ -11,6 +12,8 @@ from urllib.parse import parse_qsl, unquote_plus, urlencode
 import jwt
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def create_access_token(data: dict) -> str:
@@ -26,7 +29,8 @@ def decode_access_token(token: str) -> dict | None:
         return jwt.decode(
             token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        logger.warning("JWT decode error: %s", e)
         return None
 
 
@@ -48,17 +52,12 @@ def validate_tg_init_data(init_data: str) -> dict | None:
             return None
 
         return json.loads(parsed.get("user", "{}"))
-    except Exception:
+    except Exception as e:
+        logger.warning("Telegram initData validation failed: %s", e)
         return None
 
 
 def validate_vk_sign(query_string: str, protected_key: str) -> dict | None:
-    """
-    Проверяет query-строку параметров запуска VK Mini App.
-    Спецификация: https://dev.vk.com/mini-apps/development/launch-params/sign
-
-    Возвращает словарь vk_* параметров при валидной подписи, None — при невалидной.
-    """
     if not protected_key:
         return None
     try:
@@ -67,7 +66,6 @@ def validate_vk_sign(query_string: str, protected_key: str) -> dict | None:
         if not client_sign:
             return None
 
-        # Только параметры с префиксом vk_
         vk_params = {k: v for k, v in parsed.items() if k.startswith("vk_")}
         sorted_query = urlencode(sorted(vk_params.items()))
 
@@ -83,7 +81,8 @@ def validate_vk_sign(query_string: str, protected_key: str) -> dict | None:
         if hmac.compare_digest(client_sign, expected_sign):
             return vk_params
         return None
-    except Exception:
+    except Exception as e:
+        logger.warning("VK sign validation failed: %s", e)
         return None
 
 
@@ -112,7 +111,8 @@ def verify_logs_token(token: str) -> bool:
             hashlib.sha256,
         ).hexdigest()
         return hmac.compare_digest(expected, signature)
-    except Exception:
+    except Exception as e:
+        logger.warning("Logs token verification failed: %s", e)
         return False
 
 

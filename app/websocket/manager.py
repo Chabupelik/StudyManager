@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -20,7 +24,8 @@ class ConnectionManager:
         for ws in self._connections:
             try:
                 await ws.send_json(message)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to send message to websocket client: %s", e)
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)

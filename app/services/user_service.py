@@ -66,12 +66,6 @@ def get_display_name(user: UserContext) -> str:
 
 
 async def refresh_user_cache_entry(tg_user_id: int, session: AsyncSession) -> None:
-    """Обновляет запись в кэше _tg_id_to_name для конкретного пользователя.
-
-    Пропускает запрос к БД, если имя уже есть в кэше (пользователь уже
-    заходил с момента старта сервера). Это позволяет подхватить новых
-    пользователей (напр., Четвериков Вадим) без перезапуска.
-    """
     if tg_user_id in _tg_id_to_name:
         return
 
