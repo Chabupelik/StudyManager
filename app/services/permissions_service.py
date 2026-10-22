@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import random
@@ -18,19 +17,13 @@ logger = logging.getLogger(__name__)
 _PERM_TTL_BASE = 1800
 _PERM_TTL_JITTER = 60
 
-_local_locks: dict[str, asyncio.Lock] = {}
-_local_locks_mutex = asyncio.Lock()
-
 
 def _perm_key(identifier: int, platform: str = "telegram") -> str:
     return f"user_perm:{platform}:{identifier}"
 
 
-async def _get_or_create_lock(key: str) -> asyncio.Lock:
-    async with _local_locks_mutex:
-        if key not in _local_locks:
-            _local_locks[key] = asyncio.Lock()
-        return _local_locks[key]
+def _lock_key(identifier: int, platform: str = "telegram") -> str:
+    return f"lock:perm:{platform}:{identifier}"
 
 
 async def _fetch_permissions_from_db(
@@ -88,25 +81,24 @@ async def get_user_permissions(
     if cached is not None:
         return json.loads(cached)
 
-    lock = await _get_or_create_lock(key)
-    async with lock:
-        cached = await redis.get(key)
-        if cached is not None:
-            return json.loads(cached)
+    lock_key = _lock_key(identifier, platform)
+    try:
+        async with redis.lock(lock_key, timeout=3, blocking_timeout=0.3):
+            cached = await redis.get(key)
+            if cached is not None:
+                return json.loads(cached)
 
-        try:
             permissions = await _fetch_permissions_from_db(
                 identifier, session, platform
             )
-        except Exception:
-            logger.exception(
-                "Failed to fetch permissions for %s id=%s", platform, identifier
-            )
-            raise
-
-        ttl = _PERM_TTL_BASE + random.randint(-_PERM_TTL_JITTER, _PERM_TTL_JITTER)
-        await redis.set(key, json.dumps(permissions), ex=ttl)
-        return permissions
+            ttl = _PERM_TTL_BASE + random.randint(-_PERM_TTL_JITTER, _PERM_TTL_JITTER)
+            await redis.set(key, json.dumps(permissions), ex=ttl)
+            return permissions
+    except Exception:
+        cached = await redis.get(key)
+        if cached is not None:
+            return json.loads(cached)
+        return await _fetch_permissions_from_db(identifier, session, platform)
 
 
 async def invalidate_user_permissions(
