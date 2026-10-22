@@ -32,10 +32,6 @@ class Settings(BaseSettings):
 
     api_keys: str = ""
 
-    jwt_secret: str = ""
-    jwt_algorithm: str = "HS256"
-    jwt_expire_days: int = 30
-
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     postgres_db: str = "postgres"

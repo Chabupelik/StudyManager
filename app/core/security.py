@@ -6,32 +6,11 @@ import hmac
 import json
 import logging
 import time
-from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, unquote_plus, urlencode
-
-import jwt
 
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
-
-
-def create_access_token(data: dict) -> str:
-    settings = get_settings()
-    payload = data.copy()
-    payload["exp"] = datetime.now(UTC) + timedelta(days=settings.jwt_expire_days)
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-
-
-def decode_access_token(token: str) -> dict | None:
-    settings = get_settings()
-    try:
-        return jwt.decode(
-            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
-        )
-    except jwt.PyJWTError as e:
-        logger.warning("JWT decode error: %s", e)
-        return None
 
 
 def validate_tg_init_data(init_data: str) -> dict | None:
@@ -114,8 +93,3 @@ def verify_logs_token(token: str) -> bool:
     except Exception as e:
         logger.warning("Logs token verification failed: %s", e)
         return False
-
-
-def verify_password_hash(plain_password: str, stored_hash: str) -> bool:
-    incoming = hashlib.sha256(plain_password.encode()).hexdigest()
-    return hmac.compare_digest(incoming, stored_hash)

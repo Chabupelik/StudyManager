@@ -9,7 +9,6 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.security import (
-    decode_access_token,
     validate_tg_init_data,
     validate_vk_sign,
 )
@@ -27,7 +26,6 @@ async def get_current_user(
     request: Request,
     x_tg_data: str | None = Header(None, alias="X-Telegram-Init-Data"),
     x_vk_sign: str | None = Header(None, alias="X-VK-Sign"),
-    authorization: str | None = Header(None),
 ) -> UserContext:
     if x_tg_data:
         user_dict = validate_tg_init_data(x_tg_data)
@@ -78,16 +76,6 @@ async def get_current_user(
                 platform="vk",
             )
         raise HTTPException(status_code=401, detail="Invalid VK sign")
-
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ").strip()
-        payload = decode_access_token(token)
-        if payload and (sub := payload.get("sub")):
-            try:
-                return UserContext(id=int(sub), platform="web")
-            except ValueError:
-                pass
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     raise HTTPException(status_code=401, detail="Authentication required")
 

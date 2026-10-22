@@ -7,35 +7,13 @@ export interface ApiOptions {
 }
 
 export class ApiClient {
-  private static token: string | null = localStorage.getItem('study_jwt_token');
-
-  public static setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('study_jwt_token', token);
-    } else {
-      localStorage.removeItem('study_jwt_token');
-    }
-  }
-
-  public static getToken(): string | null {
-    return this.token;
-  }
-
   public static async request<T = any>(url: string, options: ApiOptions = {}): Promise<T> {
     const headers: Record<string, string> = {
       ...(options.headers || {}),
     };
 
-    // Auth header: X-Telegram-Init-Data (TG) или X-VK-Sign (VK)
     const authHeaders = appBridge.getAuthHeaders();
     Object.assign(headers, authHeaders);
-
-    // JWT Bearer для PC-входа
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
 
     let body: BodyInit | undefined = undefined;
 
@@ -75,7 +53,6 @@ export class ApiClient {
       throw new Error(err.detail || `Server error ${res.status}`);
     }
 
-    // Return JSON or empty object
     const contentType = res.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       return res.json();

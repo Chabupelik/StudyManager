@@ -17,7 +17,6 @@ from app.api.dependencies import get_client_ip
 from app.api.v1 import (
     admin,
     attendance,
-    auth,
     duties,
     groups,
     groups_schedule,
@@ -184,7 +183,6 @@ async def ready_check(
 
 
 PREFIX = "/api"
-app.include_router(auth.router, prefix=PREFIX)
 app.include_router(schedule.router, prefix=PREFIX)
 app.include_router(attendance.router, prefix=PREFIX)
 app.include_router(duties.router, prefix=PREFIX)
