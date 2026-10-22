@@ -4,7 +4,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import or_, select
 
 from app.api.dependencies import (
     UserPermissionContext,
@@ -13,7 +13,9 @@ from app.api.dependencies import (
     require_developer,
 )
 from app.core.config import get_settings
-from app.db.database import get_db
+from app.db.database import DbSession
+from app.models.group_member import GroupMember
+from app.models.user import User
 from app.repositories.audit_repo import AuditRepository
 from app.services.user_service import get_display_name
 from app.websocket.manager import manager
@@ -25,7 +27,7 @@ router = APIRouter(tags=["admin"])
 @router.get("/ping_admin")
 async def ping(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    db: DbSession,
 ):
     is_admin = ctx.is_superadmin or any(
         role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
@@ -52,17 +54,11 @@ async def ping(
 @router.get("/admin_users")
 async def get_admin_users(
     ctx: Annotated[UserPermissionContext, Depends(require_admin)],
-    db: AsyncSession = Depends(get_db),
+    db: DbSession,
 ):
     settings = get_settings()
     repo = AuditRepository(db)
     online_data = await repo.get_all_admins_online()
-
-    # Query all users who are admins
-    from sqlalchemy import or_, select
-
-    from app.models.group_member import GroupMember
-    from app.models.user import User
 
     conditions = [User.is_superadmin.is_(True)]
 
@@ -89,12 +85,10 @@ async def get_admin_users(
     result = await db.execute(stmt)
     admin_users = result.all()
 
-    # Create a mapping of tg_user_id -> full_name
     admins_map = {
         row.tg_user_id: row.full_name for row in admin_users if row.tg_user_id
     }
 
-    # Ensure developer is always in the list
     if settings.developer_id not in admins_map:
         admins_map[settings.developer_id] = "ID " + str(settings.developer_id)
 
@@ -104,10 +98,6 @@ async def get_admin_users(
     for admin_id, full_name in admins_map.items():
         data = online_data.get(admin_id)
         name = full_name or (data.name if data else f"Пользователь {admin_id}")
-
-        if admin_id == settings.curator_id:
-            name = "Виктория Александровна"
-
         last_seen = data.last_seen if data else 0
 
         if admin_id == settings.developer_id:
@@ -137,7 +127,6 @@ async def get_init(
     if not ctx.groups_roles and not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
 
-    # User is an admin if they are superadmin, or have an admin-level role in any group
     is_admin = ctx.is_superadmin or any(
         role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
     )
@@ -151,12 +140,12 @@ async def get_init(
 @router.get("/admin/logs")
 @router.get("/logs")
 async def get_admin_logs(
+    db: DbSession,
     offset: int = 0,
     limit: int = 20,
     user_filter: str = "all",
     action_filter: str = "all",
     ctx: Annotated[UserPermissionContext, Depends(require_admin)] = None,
-    db: AsyncSession = Depends(get_db),
 ):
     repo = AuditRepository(db)
     logs, users, actions = await repo.get_action_logs(
@@ -182,8 +171,8 @@ async def get_admin_logs(
 @router.delete("/logs/{log_id}")
 async def delete_log(
     log_id: int,
+    db: DbSession,
     ctx: Annotated[UserPermissionContext, Depends(require_developer)] = None,
-    db: AsyncSession = Depends(get_db),
 ):
     repo = AuditRepository(db)
     await repo.delete_action_log(log_id)

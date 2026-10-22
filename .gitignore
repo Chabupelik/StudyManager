@@ -1,8 +1,6 @@
-# --- Python (Виртуальное окружение и кэш) ---
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .Python
 env/
 venv/
@@ -10,31 +8,34 @@ venv/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# --- База данных и локальные файлы ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+
 /data/
 backups/
 *.db
+*.sqlite
 *.sqlite3
 
-# --- Секреты и настройки среды ---
 .env
 .env.*
+*.env
 !.env.example
+!.env.template
 
-# --- IDE / Редакторы ---
 .vscode/
 .idea/
 *.swp
 *.swo
-*.sublime-.sublime-workspace
+*~
 .history
-
-
-# --- Системные файлы ---
 .DS_Store
 Thumbs.db
 
-# --- Frontend / Node.js ---
 node_modules/
 frontend/node_modules/
 dist/
@@ -43,16 +44,17 @@ frontend/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 *.tsbuildinfo
 
-# --- Локальные данные и секреты ---
 *.json
-!frontend/*.json
+!package*.json
+!tsconfig*.json
 !frontend/**/*.json
+!frontend/*.json
+
 *secret*
 *.save*
 *.save.*
 report/
-
-# --- Tools output ---
 repomix-output.*
