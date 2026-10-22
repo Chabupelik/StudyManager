@@ -219,7 +219,6 @@ async def generate_excel_report(year: str, month: str, group_id: int):
         date_str = f"{y}-{m:02d}-{d:02d}"
         wday = datetime(y, m, d).weekday()
 
-        # Fetch base times from DB instead of BASE_SCHEDULES
         lesson_rows = await pool.fetch(
             "SELECT start_time FROM lessons l JOIN schedules s ON l.schedule_id = s.id "
             "WHERE s.group_id = $1 AND s.day_of_week = $2 "
