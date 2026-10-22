@@ -18,40 +18,46 @@ logger = logging.getLogger(__name__)
 _PERM_TTL_BASE = 1800
 _PERM_TTL_JITTER = 60
 
-_local_locks: dict[int, asyncio.Lock] = {}
+_local_locks: dict[str, asyncio.Lock] = {}
 _local_locks_mutex = asyncio.Lock()
 
 
-def _perm_key(tg_user_id: int) -> str:
-    return f"user_perm:{tg_user_id}"
+def _perm_key(identifier: int, platform: str = "telegram") -> str:
+    return f"user_perm:{platform}:{identifier}"
 
 
-def _lock_key(tg_user_id: int) -> str:
-    return f"lock:perm:{tg_user_id}"
-
-
-async def _get_or_create_lock(tg_user_id: int) -> asyncio.Lock:
+async def _get_or_create_lock(key: str) -> asyncio.Lock:
     async with _local_locks_mutex:
-        if tg_user_id not in _local_locks:
-            _local_locks[tg_user_id] = asyncio.Lock()
-        return _local_locks[tg_user_id]
+        if key not in _local_locks:
+            _local_locks[key] = asyncio.Lock()
+        return _local_locks[key]
 
 
 async def _fetch_permissions_from_db(
-    tg_user_id: int,
+    identifier: int,
     session: AsyncSession,
+    platform: str = "telegram",
 ) -> dict:
     settings = get_settings()
+
+    if platform == "telegram":
+        condition = User.tg_user_id == identifier
+        is_superadmin = identifier == settings.developer_id
+    elif platform == "vk":
+        condition = User.vk_user_id == identifier
+        is_superadmin = False
+    else:
+        condition = User.id == identifier
+        is_superadmin = False
 
     stmt = (
         select(User, GroupMember)
         .outerjoin(GroupMember, GroupMember.user_id == User.id)
-        .where(User.tg_user_id == tg_user_id)
+        .where(condition)
     )
     result = await session.execute(stmt)
     rows = result.all()
 
-    is_superadmin = tg_user_id == settings.developer_id
     groups: dict[str, str] = {}
     full_name = ""
 
@@ -71,27 +77,30 @@ async def _fetch_permissions_from_db(
 
 
 async def get_user_permissions(
-    tg_user_id: int,
+    identifier: int,
     session: AsyncSession,
     redis: aioredis.Redis,
+    platform: str = "telegram",
 ) -> dict:
-    key = _perm_key(tg_user_id)
+    key = _perm_key(identifier, platform)
 
     cached = await redis.get(key)
     if cached is not None:
         return json.loads(cached)
 
-    lock = await _get_or_create_lock(tg_user_id)
+    lock = await _get_or_create_lock(key)
     async with lock:
         cached = await redis.get(key)
         if cached is not None:
             return json.loads(cached)
 
         try:
-            permissions = await _fetch_permissions_from_db(tg_user_id, session)
+            permissions = await _fetch_permissions_from_db(
+                identifier, session, platform
+            )
         except Exception:
             logger.exception(
-                "Failed to fetch permissions from DB for tg_user_id=%s", tg_user_id
+                "Failed to fetch permissions for %s id=%s", platform, identifier
             )
             raise
 
@@ -101,8 +110,10 @@ async def get_user_permissions(
 
 
 async def invalidate_user_permissions(
-    tg_user_id: int,
+    identifier: int,
     redis: aioredis.Redis,
+    platform: str = "telegram",
 ) -> None:
-    key = _perm_key(tg_user_id)
-    await redis.delete(key)
+    await redis.delete(_perm_key(identifier, platform))
+    if platform == "telegram":
+        await redis.delete(f"user_perm:{identifier}")

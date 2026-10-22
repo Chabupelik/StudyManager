@@ -12,8 +12,8 @@ from app.services.user_service import AuthUser
 
 async def get_current_user(
     auth_service: AuthSrv,
-    x_tg_data: str | None = Header(None, alias="X-Telegram-Init-Data"),
-    x_vk_sign: str | None = Header(None, alias="X-VK-Sign"),
+    x_tg_data: Annotated[str | None, Header(alias="X-Telegram-Init-Data")] = None,
+    x_vk_sign: Annotated[str | None, Header(alias="X-VK-Sign")] = None,
 ) -> AuthUser:
     return await auth_service.authenticate(x_tg_data, x_vk_sign)
 
