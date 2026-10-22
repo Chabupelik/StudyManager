@@ -7,13 +7,12 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import UserPermissionContext
 from app.core.config import get_settings
 from app.db.database import DbSession
 from app.models.group_member import GroupMember
 from app.models.user import User
 from app.repositories.audit_repo import AuditRepository
-from app.services.user_service import get_display_name
+from app.services.user_service import AuthUser
 from app.websocket.manager import manager
 
 
@@ -48,35 +47,31 @@ class AuditService:
             }
         )
 
-    async def ping(self, ctx: UserPermissionContext) -> dict:
-        is_admin = ctx.is_superadmin or any(
-            role in ["headman", "deputy", "curator"]
-            for role in ctx.groups_roles.values()
-        )
-        if is_admin:
-            name = get_display_name(ctx.user)
-            await self.repo.upsert_admin_online(ctx.user.id, name)
+    async def ping(self, user: AuthUser) -> dict:
+        if user.is_admin():
+            name = user.display_name
+            await self.repo.upsert_admin_online(user.id, name)
             await self.session.commit()
             await manager.broadcast(
                 {
                     "type": "admin_status",
-                    "user_id": ctx.user.id,
+                    "user_id": user.id,
                     "last_seen": time.time(),
                 }
             )
         return {"status": "ok"}
 
-    async def get_admin_users(self, ctx: UserPermissionContext) -> dict:
+    async def get_admin_users(self, user: AuthUser) -> dict:
         settings = get_settings()
         online_data = await self.repo.get_all_admins_online()
 
         conditions = [User.is_superadmin.is_(True)]
-        if ctx.is_superadmin:
+        if user.is_superadmin:
             conditions.append(GroupMember.role.in_(["headman", "deputy", "curator"]))
         else:
             admin_group_ids = [
                 int(gid)
-                for gid, role in ctx.groups_roles.items()
+                for gid, role in user.groups_roles.items()
                 if role in ["headman", "deputy", "curator"]
             ]
             if admin_group_ids:
@@ -127,18 +122,13 @@ class AuditService:
         admins_list.sort(key=lambda x: x["is_online"], reverse=True)
         return {"admins": admins_list}
 
-    def get_init(self, ctx: UserPermissionContext) -> dict:
-        if not ctx.groups_roles and not ctx.is_superadmin:
+    def get_init(self, user: AuthUser) -> dict:
+        if not user.groups_roles and not user.is_superadmin:
             raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
 
-        is_admin = ctx.is_superadmin or any(
-            role in ["headman", "deputy", "curator"]
-            for role in ctx.groups_roles.values()
-        )
-
         return {
-            "role": "admin" if is_admin else "viewer",
-            "user": {"id": ctx.user.id, "first_name": ctx.user.first_name},
+            "role": "admin" if user.is_admin() else "viewer",
+            "user": {"id": user.id, "first_name": user.first_name},
         }
 
     async def get_logs(

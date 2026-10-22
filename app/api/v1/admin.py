@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.dependencies import (
-    CurrentUserContext,
+    CurrentUser,
     RequireAdmin,
     RequireDeveloper,
 )
@@ -14,31 +14,31 @@ router = APIRouter(tags=["admin"])
 
 @router.get("/admin/ping")
 async def ping(
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     service: AuditSrv,
 ):
-    return await service.ping(ctx)
+    return await service.ping(current_user)
 
 
 @router.get("/admin/users")
 async def get_admin_users(
-    ctx: RequireAdmin,
+    current_user: RequireAdmin,
     service: AuditSrv,
 ):
-    return await service.get_admin_users(ctx)
+    return await service.get_admin_users(current_user)
 
 
 @router.get("/init")
 async def get_init(
-    ctx: CurrentUserContext,
+    current_user: CurrentUser,
     service: AuditSrv,
 ):
-    return service.get_init(ctx)
+    return service.get_init(current_user)
 
 
 @router.get("/admin/logs")
 async def get_admin_logs(
-    ctx: RequireAdmin,
+    current_user: RequireAdmin,
     service: AuditSrv,
     offset: int = 0,
     limit: int = 20,
@@ -51,7 +51,7 @@ async def get_admin_logs(
 @router.delete("/admin/logs/{log_id}")
 async def delete_log(
     log_id: int,
-    ctx: RequireDeveloper,
+    current_user: RequireDeveloper,
     service: AuditSrv,
 ):
     return await service.delete_log(log_id)
