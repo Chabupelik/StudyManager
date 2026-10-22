@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select
 
 from app.api.dependencies import (
+    CurrentUserContext,
     UserPermissionContext,
-    get_current_user_context,
     require_group_role,
 )
-from app.db.database import get_db
-from app.db.redis_client import get_redis
+from app.db.database import DbSession
+from app.db.redis_client import RedisClient
+from app.models.attendance import Attendance
+from app.models.duty import Duty
 from app.models.group import Group
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
@@ -54,8 +54,8 @@ class MemberResponse(BaseModel):
 @router.post("", response_model=GroupResponse, status_code=201)
 async def create_group(
     body: GroupCreateRequest,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    ctx: CurrentUserContext,
+    session: DbSession,
 ) -> GroupResponse:
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
@@ -92,8 +92,8 @@ class GroupUpdateRequest(BaseModel):
 async def update_group(
     group_id: int,
     body: GroupUpdateRequest,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    ctx: CurrentUserContext,
+    session: DbSession,
 ) -> GroupResponse:
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
@@ -133,8 +133,8 @@ async def update_group(
 )
 async def delete_group(
     group_id: int,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    ctx: CurrentUserContext,
+    session: DbSession,
 ):
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
@@ -142,11 +142,6 @@ async def delete_group(
     group = await session.get(Group, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-
-    from sqlalchemy import delete
-
-    from app.models.attendance import Attendance
-    from app.models.duty import Duty
 
     await session.execute(delete(Attendance).where(Attendance.group_id == group_id))
     await session.execute(delete(Duty).where(Duty.group_id == group_id))
@@ -158,8 +153,8 @@ async def delete_group(
 
 @router.get("/my", response_model=list[GroupResponse])
 async def get_my_groups(
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    ctx: CurrentUserContext,
+    session: DbSession,
 ) -> list[GroupResponse]:
     if ctx.is_superadmin:
         result = await session.execute(select(Group).order_by(Group.name))
@@ -203,7 +198,7 @@ async def list_members(
             )
         ),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: DbSession,
 ) -> list[MemberResponse]:
     stmt = (
         select(User, GroupMember)
@@ -232,8 +227,8 @@ async def add_member(
         UserPermissionContext,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+    session: DbSession,
+    redis: RedisClient,
 ) -> MemberResponse:
     if body.tg_user_id is None and body.vk_user_id is None:
         raise HTTPException(
@@ -316,8 +311,8 @@ async def update_member(
         UserPermissionContext,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+    session: DbSession,
+    redis: RedisClient,
 ) -> MemberResponse:
     result = await session.execute(
         select(GroupMember).where(
@@ -378,8 +373,8 @@ async def remove_member(
         UserPermissionContext,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+    session: DbSession,
+    redis: RedisClient,
 ) -> Response:
     result = await session.execute(
         select(GroupMember).where(

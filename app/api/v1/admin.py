@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import or_, select
 
 from app.api.dependencies import (
-    UserPermissionContext,
-    get_current_user_context,
-    require_admin,
-    require_developer,
+    CurrentUserContext,
+    RequireAdmin,
+    RequireDeveloper,
 )
 from app.core.config import get_settings
 from app.db.database import DbSession
@@ -26,7 +24,7 @@ router = APIRouter(tags=["admin"])
 @router.get("/admin/ping")
 @router.get("/ping_admin")
 async def ping(
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    ctx: CurrentUserContext,
     db: DbSession,
 ):
     is_admin = ctx.is_superadmin or any(
@@ -53,7 +51,7 @@ async def ping(
 @router.get("/admin/users")
 @router.get("/admin_users")
 async def get_admin_users(
-    ctx: Annotated[UserPermissionContext, Depends(require_admin)],
+    ctx: RequireAdmin,
     db: DbSession,
 ):
     settings = get_settings()
@@ -122,7 +120,7 @@ async def get_admin_users(
 @router.get("/init")
 @router.get("/admin/init")
 async def get_init(
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    ctx: CurrentUserContext,
 ):
     if not ctx.groups_roles and not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
@@ -140,12 +138,12 @@ async def get_init(
 @router.get("/admin/logs")
 @router.get("/logs")
 async def get_admin_logs(
+    ctx: RequireAdmin,
     db: DbSession,
     offset: int = 0,
     limit: int = 20,
     user_filter: str = "all",
     action_filter: str = "all",
-    ctx: Annotated[UserPermissionContext, Depends(require_admin)] = None,
 ):
     repo = AuditRepository(db)
     logs, users, actions = await repo.get_action_logs(
@@ -171,8 +169,8 @@ async def get_admin_logs(
 @router.delete("/logs/{log_id}")
 async def delete_log(
     log_id: int,
+    ctx: RequireDeveloper,
     db: DbSession,
-    ctx: Annotated[UserPermissionContext, Depends(require_developer)] = None,
 ):
     repo = AuditRepository(db)
     await repo.delete_action_log(log_id)

@@ -2,18 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import (
-    UserPermissionContext,
-    get_current_user_context,
-)
+from app.api.dependencies import CurrentUserContext
 from app.core.config import get_settings
-from app.db.database import async_session_maker, get_db
+from app.db.database import DbSession, async_session_maker
 from app.integrations import telegram, vk
 from app.models.group import Group
 from app.models.group_member import GroupMember, MemberRole
@@ -45,8 +40,8 @@ async def _log_duties_action(
 
 @router.get("/duties", response_model=DutiesResponse)
 async def get_duties(
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
     group_id: int | None = None,
 ):
     now = datetime.now(MSK)
@@ -131,8 +126,8 @@ async def get_duties(
 async def assign_duties(
     data: DutyAssignRequest,
     background_tasks: BackgroundTasks,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
     settings = get_settings()
     duty_repo = DutyRepository(db)
@@ -209,7 +204,7 @@ async def assign_duties(
 
 @router.post("/internal/broadcast_duties")
 async def broadcast_duties(
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    ctx: CurrentUserContext,
 ):
     await manager.broadcast({"type": "update_duties"})
     return {"status": "ok"}

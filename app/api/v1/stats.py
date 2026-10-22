@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import UserPermissionContext, get_current_user_context
-from app.db.database import get_db
+from app.api.dependencies import CurrentUserContext
+from app.db.database import DbSession
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
+from app.services.schedule_service import (
+    compute_active_times,
+    get_base_times_for_date,
+    get_subject_at,
+)
 from app.services.stats_service import (
+    _build_override_map,
     aggregate_student_stats,
     compute_month_hours,
     compute_semester_hours,
@@ -28,8 +32,8 @@ router = APIRouter(tags=["stats"])
 async def get_stats(
     year: str,
     month: str,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
     group_id: int | None = None,
 ):
     month_prefix = f"{year}-{month}-"
@@ -112,8 +116,8 @@ async def get_stats(
 @router.get("/student_absences")
 async def get_student_absences(
     student_id: int,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
     group_id: int | None = None,
 ):
     if not ctx.groups_roles and not ctx.is_superadmin:
@@ -134,9 +138,6 @@ async def get_student_absences(
     absences = await att_repo.get_student_absences(target_group_id, student_id)
     overrides = await ovr_repo.get_all()
 
-    from app.services.schedule_service import get_subject_at
-    from app.services.stats_service import _build_override_map
-
     override_map = _build_override_map(overrides)
 
     result = []
@@ -147,11 +148,6 @@ async def get_student_absences(
         weekday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
 
         if d_str not in day_totals:
-            from app.services.schedule_service import (
-                compute_active_times,
-                get_base_times_for_date,
-            )
-
             base_times = await get_base_times_for_date(db, target_group_id, d_str)
             day_ovrs = [o for o in overrides if o.date == d_str]
             active = compute_active_times(base_times, day_ovrs)
@@ -183,8 +179,8 @@ async def get_student_subject_stats(
     student_id: int,
     year: str,
     month: str,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
     group_id: int | None = None,
 ):
     month_prefix = f"{year}-{month}-"

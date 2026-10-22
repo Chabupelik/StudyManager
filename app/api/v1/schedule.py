@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.api.dependencies import (
-    UserPermissionContext,
-    get_current_user_context,
+    CurrentUserContext,
     get_request_details,
 )
-from app.db.database import async_session_maker, get_db
+from app.db.database import DbSession, async_session_maker
+from app.models.schedule_new import Lesson, Schedule
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
 from app.schemas.schedule import OverrideUpdateRequest, ScheduleResponse
@@ -40,11 +39,11 @@ async def _log_schedule_action(
 @router.get("/schedule", response_model=ScheduleResponse)
 async def get_schedule(
     date: str,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
+    ctx: CurrentUserContext,
+    db: DbSession,
     group_id: int | None = None,
-    db: AsyncSession = Depends(get_db),
 ):
-    _parse_date(date)  # validate
+    _parse_date(date)
     now = datetime.now(MSK)
     current_date_str = now.strftime("%Y-%m-%d")
     current_time_str = now.strftime("%H:%M") if date == current_date_str else None
@@ -58,7 +57,6 @@ async def get_schedule(
         else (int(next(iter(ctx.groups_roles.keys()))) if ctx.groups_roles else 1)
     )
 
-    # Check permissions for target_group_id
     if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -78,8 +76,8 @@ async def get_schedule(
 async def update_override(
     data: OverrideUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
     req: dict = Depends(get_request_details),
 ):
     if not ctx.groups_roles and not ctx.is_superadmin:
@@ -94,7 +92,6 @@ async def update_override(
     if not ctx.is_superadmin and str(target_group_id) not in ctx.groups_roles:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Only admins can update overrides for this group
     if not ctx.is_superadmin and ctx.groups_roles.get(str(target_group_id)) not in [
         "headman",
         "deputy",
@@ -136,15 +133,11 @@ async def update_override(
 @router.get("/admin/base", response_model=list[dict])
 async def get_base_schedule(
     group_id: int,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
     if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
         raise HTTPException(status_code=403, detail="Forbidden")
-
-    from sqlalchemy import select
-
-    from app.models.schedule_new import Lesson, Schedule
 
     stmt = select(Schedule).where(Schedule.group_id == group_id)
     schedules = (await db.execute(stmt)).scalars().all()
@@ -199,15 +192,11 @@ async def create_base_lesson(
     group_id: int,
     day_of_week: int,
     data: dict,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
     if not ctx.is_superadmin and str(group_id) not in ctx.groups_roles:
         raise HTTPException(status_code=403, detail="Forbidden")
-
-    from sqlalchemy import select
-
-    from app.models.schedule_new import Lesson, Schedule
 
     stmt = select(Schedule).where(
         Schedule.group_id == group_id, Schedule.day_of_week == day_of_week
@@ -243,11 +232,9 @@ async def create_base_lesson(
 async def update_base_lesson(
     lesson_id: int,
     data: dict,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
-    from app.models.schedule_new import Lesson, Schedule
-
     lesson = await db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
@@ -289,11 +276,9 @@ async def update_base_lesson(
 @router.delete("/admin/base/lesson/{lesson_id}")
 async def delete_base_lesson(
     lesson_id: int,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
-    from app.models.schedule_new import Lesson, Schedule
-
     lesson = await db.get(Lesson, lesson_id)
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")

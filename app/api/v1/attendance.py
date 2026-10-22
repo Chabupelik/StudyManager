@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import (
-    UserPermissionContext,
-    get_current_user_context,
-)
-from app.db.database import async_session_maker, get_db
+from app.api.dependencies import CurrentUserContext
+from app.db.database import DbSession, async_session_maker
 from app.models.group_member import GroupMember, MemberRole
 from app.models.user import User
 from app.repositories.attendance_repo import AttendanceRepository
@@ -21,6 +16,7 @@ from app.services.audit_service import log_action
 from app.services.schedule_service import (
     compute_active_times,
     get_base_times_for_date,
+    get_subject_at,
 )
 from app.services.user_service import get_display_name
 from app.websocket.manager import manager
@@ -29,7 +25,6 @@ router = APIRouter(tags=["attendance"])
 
 
 def _parse_date(date: str) -> datetime:
-    """Validate and parse a YYYY-MM-DD date string. Raises 400 on invalid format."""
     try:
         return datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
@@ -44,10 +39,10 @@ async def get_lesson_details(
     date: str,
     time: str,
     group_id: int,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
-    _parse_date(date)  # validate
+    _parse_date(date)
 
     if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(
@@ -123,10 +118,10 @@ async def _log_attendance_action(
 async def update_attendance(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
-    _parse_date(data.date)  # validate
+    _parse_date(data.date)
 
     group_id = data.group_id
     if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
@@ -139,7 +134,7 @@ async def update_attendance(
         group_id=group_id,
         date=data.date,
         time=data.time,
-        user_id=data.student_id,  # student_id from frontend is now user_id
+        user_id=data.student_id,
         status=data.status,
         reason=data.reason or "",
     )
@@ -151,8 +146,6 @@ async def update_attendance(
         lesson_name = ovr_map[data.time].new_name
     else:
         weekday = datetime.strptime(data.date, "%Y-%m-%d").weekday()
-        from app.services.schedule_service import get_subject_at
-
         name, _ = await get_subject_at(db, group_id, data.date, data.time, weekday, {})
         if name:
             lesson_name = name
@@ -193,10 +186,10 @@ async def update_attendance(
 async def update_attendance_day(
     data: AttendanceUpdateRequest,
     background_tasks: BackgroundTasks,
-    ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
-    db: AsyncSession = Depends(get_db),
+    ctx: CurrentUserContext,
+    db: DbSession,
 ):
-    _parse_date(data.date)  # validate
+    _parse_date(data.date)
 
     group_id = data.group_id
     if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):

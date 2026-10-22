@@ -12,7 +12,7 @@ from app.api.dependencies import (
     UserPermissionContext,
     require_group_role,
 )
-from app.db.database import get_db
+from app.db.database import DbSession
 from app.models.group import Group
 from app.models.group_member import MemberRole
 from app.models.schedule_new import Lesson, Schedule
@@ -20,14 +20,7 @@ from app.models.schedule_new import Lesson, Schedule
 router = APIRouter(prefix="/groups", tags=["schedule"])
 
 
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
-
-
 class ScheduleCreateRequest(BaseModel):
-    """day_of_week: 1 = Monday … 6 = Saturday."""
-
     day_of_week: int = Field(..., ge=1, le=6)
 
 
@@ -56,7 +49,7 @@ class LessonResponse(BaseModel):
     name: str
     teacher: str | None
     classroom: str | None
-    start_time: str  # "HH:MM"
+    start_time: str
     end_time: str
     valid_from: date | None
     valid_until: date | None
@@ -74,10 +67,6 @@ class TodayLessonResponse(BaseModel):
     day_of_week: int
     lessons: list[LessonResponse]
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _DAY_NAMES = {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
 
@@ -107,11 +96,6 @@ async def _get_lessons_for_schedule(
     return [_lesson_to_response(l) for l in result.scalars().all()]
 
 
-# ---------------------------------------------------------------------------
-# POST /groups/{group_id}/schedules — create a schedule slot for a day
-# ---------------------------------------------------------------------------
-
-
 @router.post(
     "/{group_id}/schedules",
     response_model=ScheduleResponse,
@@ -124,12 +108,8 @@ async def create_schedule(
         UserPermissionContext,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: DbSession,
 ) -> ScheduleResponse:
-    """
-    Create a schedule entry (group × day_of_week).
-    Fails with 409 if this day already has a schedule for the group.
-    """
     group = await session.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -143,32 +123,26 @@ async def create_schedule(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Schedule for day {body.day_of_week} "
-                f"({_DAY_NAMES.get(body.day_of_week, '?')}) already exists"
-            ),
+            detail=f"Schedule for day {body.day_of_week} ({_DAY_NAMES.get(body.day_of_week, '?')}) already exists for this group",
         )
 
-    schedule = Schedule(group_id=group_id, day_of_week=body.day_of_week)
-    session.add(schedule)
+    sched = Schedule(
+        group_id=group_id,
+        day_of_week=body.day_of_week,
+    )
+    session.add(sched)
     await session.commit()
-    await session.refresh(schedule)
-
+    await session.refresh(sched)
     return ScheduleResponse(
-        id=schedule.id,
-        group_id=schedule.group_id,
-        day_of_week=schedule.day_of_week,
+        id=sched.id,
+        group_id=sched.group_id,
+        day_of_week=sched.day_of_week,
         lessons=[],
     )
 
 
-# ---------------------------------------------------------------------------
-# POST /groups/{group_id}/lessons — add a lesson to a schedule
-# ---------------------------------------------------------------------------
-
-
 @router.post(
-    "/{group_id}/lessons",
+    "/{group_id}/schedules/{schedule_id}/lessons",
     response_model=LessonResponse,
     status_code=201,
 )
@@ -180,13 +154,8 @@ async def add_lesson(
         UserPermissionContext,
         Depends(require_group_role([MemberRole.headman, MemberRole.curator])),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: DbSession,
 ) -> LessonResponse:
-    """
-    Add a lesson to a specific schedule slot.
-    Requires headman or curator role in the group.
-    """
-    # Verify schedule belongs to this group
     schedule = await session.get(Schedule, schedule_id)
     if schedule is None or schedule.group_id != group_id:
         raise HTTPException(status_code=404, detail="Schedule not found in this group")
@@ -208,11 +177,6 @@ async def add_lesson(
     return _lesson_to_response(lesson)
 
 
-# ---------------------------------------------------------------------------
-# GET /groups/{group_id}/schedule/today — today's lessons (filtered by date)
-# ---------------------------------------------------------------------------
-
-
 @router.get(
     "/{group_id}/schedule/today",
     response_model=TodayLessonResponse,
@@ -232,22 +196,11 @@ async def get_today_schedule(
             )
         ),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: DbSession,
 ) -> TodayLessonResponse:
-    """
-    Return today's lessons for the group.
-
-    Filters lessons by:
-    - schedule.day_of_week matches today's weekday (ISO: 1=Mon … 7=Sun,
-      clamped to 6=Sat for schedules that don't include Sunday)
-    - lesson.valid_from <= today (if set)
-    - lesson.valid_until >= today (if set)
-    """
     today = date.today()
-    # Python weekday(): 0=Mon … 6=Sun. Our schema: 1=Mon … 6=Sat.
-    iso_dow = today.isoweekday()  # 1=Mon … 7=Sun
+    iso_dow = today.isoweekday()
     if iso_dow == 7:
-        # Sunday — no lessons
         return TodayLessonResponse(schedule_id=0, day_of_week=7, lessons=[])
 
     schedule_result = await session.execute(
@@ -260,13 +213,12 @@ async def get_today_schedule(
     if schedule is None:
         return TodayLessonResponse(schedule_id=0, day_of_week=iso_dow, lessons=[])
 
-    # Load lessons valid today
     lesson_result = await session.execute(
         select(Lesson)
         .where(
             Lesson.schedule_id == schedule.id,
-            (Lesson.valid_from == None) | (Lesson.valid_from <= today),  # noqa: E711
-            (Lesson.valid_until == None) | (Lesson.valid_until >= today),  # noqa: E711
+            (Lesson.valid_from.is_(None)) | (Lesson.valid_from <= today),
+            (Lesson.valid_until.is_(None)) | (Lesson.valid_until >= today),
         )
         .order_by(Lesson.lesson_number, Lesson.start_time)
     )
@@ -277,11 +229,6 @@ async def get_today_schedule(
         day_of_week=iso_dow,
         lessons=lessons,
     )
-
-
-# ---------------------------------------------------------------------------
-# GET /groups/{group_id}/schedule — full week schedule
-# ---------------------------------------------------------------------------
 
 
 @router.get(
@@ -303,9 +250,8 @@ async def get_full_schedule(
             )
         ),
     ],
-    session: Annotated[AsyncSession, Depends(get_db)],
+    session: DbSession,
 ) -> list[ScheduleResponse]:
-    """Return the full week schedule for the group, ordered by day_of_week."""
     result = await session.execute(
         select(Schedule)
         .where(Schedule.group_id == group_id)

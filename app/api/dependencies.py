@@ -4,10 +4,8 @@ import time
 from collections.abc import Callable
 from typing import Annotated
 
-import redis.asyncio as aioredis
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.security import (
@@ -15,8 +13,8 @@ from app.core.security import (
     validate_tg_init_data,
     validate_vk_sign,
 )
-from app.db.database import async_session_maker, get_db
-from app.db.redis_client import get_redis
+from app.db.database import DbSession, async_session_maker
+from app.db.redis_client import RedisClient
 from app.models.group_member import MemberRole
 from app.models.user import User
 from app.services.permissions_service import get_user_permissions
@@ -94,6 +92,9 @@ async def get_current_user(
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
+CurrentUser = Annotated[UserContext, Depends(get_current_user)]
+
+
 class UserPermissionContext:
     __slots__ = ("full_name", "groups_roles", "is_superadmin", "user")
 
@@ -111,9 +112,9 @@ class UserPermissionContext:
 
 
 async def get_current_user_context(
-    user: Annotated[UserContext, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+    user: CurrentUser,
+    session: DbSession,
+    redis: RedisClient,
 ) -> UserPermissionContext:
     permissions = await get_user_permissions(user.id, session, redis)
     full_name = permissions.get("full_name") or user.full_name or user.first_name
@@ -126,6 +127,9 @@ async def get_current_user_context(
     )
 
 
+CurrentUserContext = Annotated[UserPermissionContext, Depends(get_current_user_context)]
+
+
 def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
     allowed_str: set[str] = {
         r.value if isinstance(r, MemberRole) else str(r) for r in allowed_roles
@@ -133,7 +137,7 @@ def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
 
     async def _check(
         group_id: int,
-        ctx: UserPermissionContext = Depends(get_current_user_context),
+        ctx: CurrentUserContext,
     ) -> UserPermissionContext:
         if ctx.is_superadmin:
             return ctx
@@ -149,7 +153,7 @@ def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
 
 
 async def require_admin(
-    ctx: UserPermissionContext = Depends(get_current_user_context),
+    ctx: CurrentUserContext,
 ) -> UserPermissionContext:
     is_admin = ctx.is_superadmin or any(
         role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
@@ -159,16 +163,23 @@ async def require_admin(
     return ctx
 
 
+RequireAdmin = Annotated[UserPermissionContext, Depends(require_admin)]
+
+
 async def require_developer(
-    user: UserContext = Depends(get_current_user),
+    user: CurrentUser,
 ) -> UserContext:
     if not user.is_developer:
         raise HTTPException(status_code=403, detail="Developer only")
     return user
 
 
+RequireDeveloper = Annotated[UserContext, Depends(require_developer)]
+
+
 async def get_request_details(
-    request: Request, user: UserContext = Depends(get_current_user)
+    request: Request,
+    user: CurrentUser,
 ) -> dict:
     ip = request.headers.get("x-forwarded-for")
     if ip:
