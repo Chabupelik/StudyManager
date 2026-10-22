@@ -28,7 +28,7 @@ from app.api.v1 import (
 )
 from app.core.config import get_settings
 from app.db.database import DbSession, engine
-from app.db.redis_client import RedisClient, close_redis_pool, get_redis
+from app.db.redis_client import RedisClient, get_raw_redis_client
 from app.schemas.common import ResponseError, ResponseOK
 
 logging.basicConfig(
@@ -43,10 +43,9 @@ logger = logging.getLogger("studymanager_api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        async with engine.connect() as conn:
+        async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-        redis_client = await get_redis()
-        await redis_client.ping()
+        await get_raw_redis_client().ping()
         logger.info("Database and Redis connections established successfully")
     except Exception as e:
         logger.error("Connection check failed: %s", e)
@@ -55,8 +54,8 @@ async def lifespan(app: FastAPI):
     yield
 
     try:
-        await close_redis_pool()
         await engine.dispose()
+        await get_raw_redis_client().aclose()
         logger.info("Database and Redis connections closed cleanly")
     except Exception as e:
         logger.error("Error during connection teardown: %s", e)
