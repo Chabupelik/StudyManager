@@ -22,7 +22,6 @@ router = APIRouter(tags=["admin"])
 
 
 @router.get("/admin/ping")
-@router.get("/ping_admin")
 async def ping(
     ctx: CurrentUserContext,
     db: DbSession,
@@ -49,7 +48,6 @@ async def ping(
 
 
 @router.get("/admin/users")
-@router.get("/admin_users")
 async def get_admin_users(
     ctx: RequireAdmin,
     db: DbSession,
@@ -118,7 +116,6 @@ async def get_admin_users(
 
 
 @router.get("/init")
-@router.get("/admin/init")
 async def get_init(
     ctx: CurrentUserContext,
 ):
@@ -136,7 +133,6 @@ async def get_init(
 
 
 @router.get("/admin/logs")
-@router.get("/logs")
 async def get_admin_logs(
     ctx: RequireAdmin,
     db: DbSession,
@@ -166,7 +162,6 @@ async def get_admin_logs(
 
 
 @router.delete("/admin/logs/{log_id}")
-@router.delete("/logs/{log_id}")
 async def delete_log(
     log_id: int,
     ctx: RequireDeveloper,

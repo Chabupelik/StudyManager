@@ -9,7 +9,6 @@ router = APIRouter(tags=["internal"])
 
 
 @router.post("/internal/broadcast_duties")
-@router.post("/api/internal/broadcast_duties")
 async def internal_broadcast_duties(
     request: Request,
     x_internal_secret: str | None = Header(default=None),

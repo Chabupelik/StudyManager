@@ -200,11 +200,3 @@ async def assign_duties(
         ctx.user.id,
     )
     return {"status": "ok"}
-
-
-@router.post("/internal/broadcast_duties")
-async def broadcast_duties(
-    ctx: CurrentUserContext,
-):
-    await manager.broadcast({"type": "update_duties"})
-    return {"status": "ok"}
