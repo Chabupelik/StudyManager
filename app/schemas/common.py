@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel
@@ -13,3 +15,4 @@ class ResponseOK(BaseModel, Generic[T]):
 class ResponseError(BaseModel):
     status: str = "error"
     message: str
+    details: list[str] | None = None

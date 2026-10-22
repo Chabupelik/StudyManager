@@ -177,17 +177,19 @@ async def require_developer(
 RequireDeveloper = Annotated[UserContext, Depends(require_developer)]
 
 
+def get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 async def get_request_details(
     request: Request,
     user: CurrentUser,
 ) -> dict:
-    ip = request.headers.get("x-forwarded-for")
-    if ip:
-        ip = ip.split(",")[0].strip()
-    else:
-        ip = request.client.host if request.client else "Unknown"
     return {
-        "ip": ip,
+        "ip": get_client_ip(request),
         "user_agent": request.headers.get("user-agent", "N/A"),
         "platform": user.platform,
     }
