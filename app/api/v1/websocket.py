@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
+from app.api.dependencies import get_client_ip
 from app.core.config import get_settings
 from app.core.security import validate_tg_init_data, validate_vk_sign
 from app.db.database import async_session_maker
@@ -18,16 +19,9 @@ logger = logging.getLogger("studymanager_api")
 router = APIRouter(tags=["websocket"])
 
 
-def _get_ws_ip(websocket: WebSocket) -> str:
-    forwarded = websocket.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return websocket.client.host if websocket.client else "unknown"
-
-
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    ip = _get_ws_ip(websocket)
+    ip = get_client_ip(websocket)
     user_agent = websocket.headers.get("user-agent", "N/A")
 
     await manager.connect(websocket)
