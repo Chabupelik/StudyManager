@@ -7,7 +7,9 @@ from app.models.override import Override
 from app.repositories.base import BaseRepository
 
 
-class OverrideRepository(BaseRepository):
+class OverrideRepository(BaseRepository[Override]):
+    model = Override
+
     async def get_for_date(self, group_id: int, date: str) -> list[Override]:
         result = await self.session.execute(
             select(Override).where(Override.group_id == group_id, Override.date == date)

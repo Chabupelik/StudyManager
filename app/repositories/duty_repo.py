@@ -10,8 +10,10 @@ from app.models.duty import Duty, WebUndo
 from app.repositories.base import BaseRepository
 
 
-class DutyRepository(BaseRepository):
-    async def get_all(self, group_id: int) -> dict[int, str | None]:
+class DutyRepository(BaseRepository[Duty]):
+    model = Duty
+
+    async def get_duties_map(self, group_id: int) -> dict[int, str | None]:
         result = await self.session.execute(
             select(Duty).where(Duty.group_id == group_id)
         )

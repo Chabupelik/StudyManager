@@ -6,7 +6,9 @@ from app.models.student import Student
 from app.repositories.base import BaseRepository
 
 
-class StudentRepository(BaseRepository):
+class StudentRepository(BaseRepository[Student]):
+    model = Student
+
     async def get_all(self) -> list[Student]:
         result = await self.session.execute(select(Student).order_by(Student.id))
         return list(result.scalars().all())

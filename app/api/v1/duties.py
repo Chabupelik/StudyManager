@@ -61,7 +61,7 @@ async def get_duties(
     att_repo = AttendanceRepository(db)
     ovr_repo = OverrideRepository(db)
 
-    duties_map = await duty_repo.get_all(group_id)
+    duties_map = await duty_repo.get_duties_map(group_id)
     overrides = await ovr_repo.get_for_date(group_id, date_str)
     base_times = await get_base_times_for_date(db, group_id, date_str)
     active_times = compute_active_times(base_times, overrides)
@@ -136,7 +136,7 @@ async def assign_duties(
     if not ctx.is_superadmin and str(group_id) not in (ctx.groups_roles or {}):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    current_duties = await duty_repo.get_all(group_id)
+    current_duties = await duty_repo.get_duties_map(group_id)
     undo_data = []
     assigned_names = []
     undo_id = str(uuid.uuid4())[:8]
