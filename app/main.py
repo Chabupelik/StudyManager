@@ -195,9 +195,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
         tg_user = validate_tg_init_data(auth_data)
         if tg_user and tg_user.get("id"):
+            first_name = tg_user.get("first_name", "")
+            last_name = tg_user.get("last_name", "")
+            full_name = f"{first_name} {last_name}".strip()
             ctx = UserContext(
                 id=int(tg_user["id"]),
-                first_name=tg_user.get("first_name", ""),
+                first_name=first_name,
+                full_name=full_name,
                 platform="telegram",
             )
         else:
@@ -229,6 +233,7 @@ async def websocket_endpoint(websocket: WebSocket):
             ctx = UserContext(
                 id=user_obj.tg_user_id or user_obj.id,
                 first_name=first_name,
+                full_name=user_obj.full_name,
                 platform="vk",
             )
 

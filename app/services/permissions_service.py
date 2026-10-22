@@ -15,12 +15,9 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-_PERM_TTL_BASE = 1800  # seconds (30 min)
-_PERM_TTL_JITTER = 60  # ±60 s jitter to prevent cache stampede
+_PERM_TTL_BASE = 1800
+_PERM_TTL_JITTER = 60
 
-# Per-process asyncio locks keyed by tg_user_id.
-# Prevents Thundering Herd: at most one coroutine per user ID
-# will hit the database on a cache miss within the same worker.
 _local_locks: dict[int, asyncio.Lock] = {}
 _local_locks_mutex = asyncio.Lock()
 
@@ -44,15 +41,6 @@ async def _fetch_permissions_from_db(
     tg_user_id: int,
     session: AsyncSession,
 ) -> dict:
-    """
-    Execute a single JOIN query to build the permissions payload for a user.
-
-    Returns:
-        {
-            "is_superadmin": bool,
-            "groups": {"<group_id>": "<role>", ...}
-        }
-    """
     settings = get_settings()
 
     stmt = (
@@ -65,14 +53,21 @@ async def _fetch_permissions_from_db(
 
     is_superadmin = tg_user_id == settings.developer_id
     groups: dict[str, str] = {}
+    full_name = ""
 
     for user_row, member_row in rows:
         if user_row.is_superadmin:
             is_superadmin = True
+        if user_row.full_name:
+            full_name = user_row.full_name
         if member_row is not None:
             groups[str(member_row.group_id)] = member_row.role
 
-    return {"is_superadmin": is_superadmin, "groups": groups}
+    return {
+        "is_superadmin": is_superadmin,
+        "groups": groups,
+        "full_name": full_name,
+    }
 
 
 async def get_user_permissions(
@@ -80,34 +75,18 @@ async def get_user_permissions(
     session: AsyncSession,
     redis: aioredis.Redis,
 ) -> dict:
-    """
-    Return the permissions payload for *tg_user_id*.
-
-    Cache strategy (double-checked locking against Thundering Herd):
-    1. Fast path: check Redis — return immediately if hit.
-    2. Acquire a per-user asyncio.Lock to serialise concurrent misses
-       within the same process.
-    3. Re-check Redis (another coroutine may have populated it while we
-       waited for the lock).
-    4. On a genuine miss: query Postgres, write to Redis with TTL +
-       random jitter, release lock.
-    """
     key = _perm_key(tg_user_id)
 
-    # 1. Fast path (no lock needed)
     cached = await redis.get(key)
     if cached is not None:
         return json.loads(cached)
 
-    # 2. Acquire local lock for this user ID
     lock = await _get_or_create_lock(tg_user_id)
     async with lock:
-        # 3. Double-check after acquiring the lock
         cached = await redis.get(key)
         if cached is not None:
             return json.loads(cached)
 
-        # 4. Cache miss — hit the database
         try:
             permissions = await _fetch_permissions_from_db(tg_user_id, session)
         except Exception:
@@ -118,7 +97,6 @@ async def get_user_permissions(
 
         ttl = _PERM_TTL_BASE + random.randint(-_PERM_TTL_JITTER, _PERM_TTL_JITTER)
         await redis.set(key, json.dumps(permissions), ex=ttl)
-        logger.debug("Permissions cached for tg_user_id=%s ttl=%s", tg_user_id, ttl)
         return permissions
 
 
@@ -126,12 +104,5 @@ async def invalidate_user_permissions(
     tg_user_id: int,
     redis: aioredis.Redis,
 ) -> None:
-    """
-    Evict the cached permissions for *tg_user_id*.
-
-    Must be called after any role change, group membership addition
-    or removal so that the next request re-fetches fresh data from Postgres.
-    """
     key = _perm_key(tg_user_id)
     await redis.delete(key)
-    logger.debug("Permissions cache invalidated for tg_user_id=%s", tg_user_id)

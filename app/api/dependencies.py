@@ -20,7 +20,7 @@ from app.db.redis_client import get_redis
 from app.models.group_member import MemberRole
 from app.models.user import User
 from app.services.permissions_service import get_user_permissions
-from app.services.user_service import UserContext, refresh_user_cache_entry
+from app.services.user_service import UserContext
 
 _AUTH_DATE_MAX_AGE = 86400
 
@@ -43,9 +43,13 @@ async def get_current_user(
                         )
                 except (ValueError, TypeError):
                     pass
+            first_name = user_dict.get("first_name", "")
+            last_name = user_dict.get("last_name", "")
+            full_name = f"{first_name} {last_name}".strip()
             return UserContext(
                 id=int(user_dict["id"]),
-                first_name=user_dict.get("first_name", ""),
+                first_name=first_name,
+                full_name=full_name,
                 username=user_dict.get("username"),
                 platform="telegram",
             )
@@ -71,6 +75,7 @@ async def get_current_user(
             return UserContext(
                 id=user_obj.tg_user_id or user_obj.id,
                 first_name=first_name,
+                full_name=user_obj.full_name,
                 username=None,
                 platform="vk",
             )
@@ -90,17 +95,19 @@ async def get_current_user(
 
 
 class UserPermissionContext:
-    __slots__ = ("user", "is_superadmin", "groups_roles")
+    __slots__ = ("full_name", "groups_roles", "is_superadmin", "user")
 
     def __init__(
         self,
         user: UserContext,
         is_superadmin: bool,
         groups_roles: dict[str, str],
+        full_name: str = "",
     ) -> None:
         self.user = user
         self.is_superadmin = is_superadmin
         self.groups_roles = groups_roles
+        self.full_name = full_name or user.full_name or user.first_name
 
 
 async def get_current_user_context(
@@ -109,11 +116,13 @@ async def get_current_user_context(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> UserPermissionContext:
     permissions = await get_user_permissions(user.id, session, redis)
-    await refresh_user_cache_entry(user.id, session)
+    full_name = permissions.get("full_name") or user.full_name or user.first_name
+    user.full_name = full_name
     return UserPermissionContext(
         user=user,
         is_superadmin=permissions["is_superadmin"],
         groups_roles=permissions.get("groups", {}),
+        full_name=full_name,
     )
 
 
