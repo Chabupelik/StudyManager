@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 async def send_message(
@@ -27,9 +31,14 @@ async def send_message(
                 json=payload,
                 timeout=10,
             )
-            return resp.json()
-        except Exception as e:
-            print(f"[telegram] sendMessage error: {e}")
+            data = resp.json()
+            if not data.get("ok"):
+                logger.error(
+                    "[telegram] sendMessage error: %s", data.get("description")
+                )
+            return data
+        except Exception:
+            logger.exception("[telegram] sendMessage failed for chat_id=%s", chat_id)
             return None
 
 
@@ -42,8 +51,14 @@ async def check_membership(user_id: int) -> str | None:
                 params={"chat_id": settings.group_id, "user_id": user_id},
                 timeout=10,
             )
-            if resp.status_code == 200:
-                return resp.json().get("result", {}).get("status")
-        except Exception as e:
-            print(f"[telegram] getChatMember error: {e}")
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("result", {}).get("status")
+            logger.error(
+                "[telegram] getChatMember error for user_id=%s: %s",
+                user_id,
+                data.get("description"),
+            )
+        except Exception:
+            logger.exception("[telegram] getChatMember failed for user_id=%s", user_id)
     return None

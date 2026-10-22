@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +21,6 @@ from app.models.user import User
 from app.services.permissions_service import invalidate_user_permissions
 
 router = APIRouter(prefix="/groups", tags=["groups"])
-
-
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
 
 
 class GroupCreateRequest(BaseModel):
@@ -56,22 +51,15 @@ class MemberResponse(BaseModel):
     role: str
 
 
-# ---------------------------------------------------------------------------
-# POST /groups — create a new group (superadmin only)
-# ---------------------------------------------------------------------------
-
-
 @router.post("", response_model=GroupResponse, status_code=201)
 async def create_group(
     body: GroupCreateRequest,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> GroupResponse:
-    """Create a new study group. Requires superadmin."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
-    # Uniqueness guard (DB constraint will also catch it, but give a nicer error)
     existing = await session.execute(select(Group).where(Group.name == body.name))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -93,11 +81,6 @@ async def create_group(
     )
 
 
-# ---------------------------------------------------------------------------
-# PUT /groups/{group_id} — update a group (superadmin only)
-# ---------------------------------------------------------------------------
-
-
 class GroupUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=50)
     tg_chat_id: int | None = None
@@ -111,7 +94,6 @@ async def update_group(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> GroupResponse:
-    """Update study group details. Requires superadmin."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
@@ -141,18 +123,17 @@ async def update_group(
     )
 
 
-# ---------------------------------------------------------------------------
-# DELETE /groups/{group_id} — delete a group (superadmin only)
-# ---------------------------------------------------------------------------
-
-
-@router.delete("/{group_id}", status_code=204)
+@router.delete(
+    "/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 async def delete_group(
     group_id: int,
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Delete a study group and related records. Requires superadmin."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
@@ -165,18 +146,12 @@ async def delete_group(
     from app.models.attendance import Attendance
     from app.models.duty import Duty
 
-    # Delete records that don't have ON DELETE CASCADE at the DB schema level
     await session.execute(delete(Attendance).where(Attendance.group_id == group_id))
     await session.execute(delete(Duty).where(Duty.group_id == group_id))
 
     await session.delete(group)
     await session.flush()
-    return
-
-
-# ---------------------------------------------------------------------------
-# GET /groups/my — list groups the current user belongs to
-# ---------------------------------------------------------------------------
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/my", response_model=list[GroupResponse])
@@ -184,9 +159,7 @@ async def get_my_groups(
     ctx: Annotated[UserPermissionContext, Depends(get_current_user_context)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[GroupResponse]:
-    """Return all groups the authenticated user is a member of."""
     if ctx.is_superadmin:
-        # Superadmin sees all groups
         result = await session.execute(select(Group).order_by(Group.name))
         groups = result.scalars().all()
     else:
@@ -207,11 +180,6 @@ async def get_my_groups(
         )
         for g in groups
     ]
-
-
-# ---------------------------------------------------------------------------
-# GET /groups/{group_id}/members — list members
-# ---------------------------------------------------------------------------
 
 
 @router.get(
@@ -235,7 +203,6 @@ async def list_members(
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[MemberResponse]:
-    """List all members of a group. Any group member can call this."""
     stmt = (
         select(User, GroupMember)
         .join(GroupMember, GroupMember.user_id == User.id)
@@ -255,11 +222,6 @@ async def list_members(
     ]
 
 
-# ---------------------------------------------------------------------------
-# POST /groups/{group_id}/members — add or upsert a member
-# ---------------------------------------------------------------------------
-
-
 @router.post("/{group_id}/members", response_model=MemberResponse, status_code=201)
 async def add_member(
     group_id: int,
@@ -271,22 +233,15 @@ async def add_member(
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> MemberResponse:
-    """
-    Add a user to the group or update their role.
-    Requires headman or curator role in the target group.
-    Invalidates the user's permission cache on success.
-    """
     if body.tg_user_id is None and body.vk_user_id is None:
         raise HTTPException(
             status_code=422, detail="Provide at least tg_user_id or vk_user_id"
         )
 
-    # Ensure group exists
     group = await session.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
 
-    # Find or create user
     user: User | None = None
     if body.tg_user_id:
         result = await session.execute(
@@ -309,11 +264,9 @@ async def add_member(
         session.add(user)
         await session.flush()
     else:
-        # Update name if provided and different
         if body.full_name and user.full_name != body.full_name:
             user.full_name = body.full_name
 
-    # Upsert group membership
     result = await session.execute(
         select(GroupMember).where(
             GroupMember.user_id == user.id,
@@ -333,7 +286,6 @@ async def add_member(
 
     await session.flush()
 
-    # Invalidate cached permissions for this user
     if user.tg_user_id:
         await invalidate_user_permissions(user.tg_user_id, redis)
 
@@ -344,11 +296,6 @@ async def add_member(
         vk_user_id=user.vk_user_id,
         role=member.role,
     )
-
-
-# ---------------------------------------------------------------------------
-# PUT /groups/{group_id}/members/{user_id} — edit a member
-# ---------------------------------------------------------------------------
 
 
 class UpdateMemberRequest(BaseModel):
@@ -370,11 +317,6 @@ async def update_member(
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> MemberResponse:
-    """
-    Update an existing user's details and/or their role in the group.
-    Requires headman or curator role in the target group.
-    """
-    # 1. Verify membership
     result = await session.execute(
         select(GroupMember).where(
             GroupMember.user_id == user_id, GroupMember.group_id == group_id
@@ -384,12 +326,10 @@ async def update_member(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found in group")
 
-    # 2. Get User
     user = await session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 3. Update fields
     if body.full_name is not None:
         user.full_name = body.full_name
     if body.tg_user_id is not None:
@@ -423,12 +363,12 @@ async def update_member(
     )
 
 
-# ---------------------------------------------------------------------------
-# DELETE /groups/{group_id}/members/{user_id} — remove a member
-# ---------------------------------------------------------------------------
-
-
-@router.delete("/{group_id}/members/{user_id}", status_code=204)
+@router.delete(
+    "/{group_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
 async def remove_member(
     group_id: int,
     user_id: int,
@@ -438,8 +378,7 @@ async def remove_member(
     ],
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
-) -> None:
-    """Remove a user from the group. Requires headman or curator."""
+) -> Response:
     result = await session.execute(
         select(GroupMember).where(
             GroupMember.user_id == user_id,
@@ -453,7 +392,8 @@ async def remove_member(
     await session.delete(member)
     await session.flush()
 
-    # Invalidate permissions cache
     user = await session.get(User, user_id)
     if user and user.tg_user_id:
         await invalidate_user_permissions(user.tg_user_id, redis)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

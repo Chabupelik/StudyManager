@@ -6,6 +6,7 @@ from typing import Annotated
 
 import redis.asyncio as aioredis
 from fastapi import Depends, Header, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -14,19 +15,14 @@ from app.core.security import (
     validate_tg_init_data,
     validate_vk_sign,
 )
-from app.data.students_data import STAFF, STUDENTS
-from app.db.database import get_db
+from app.db.database import async_session_maker, get_db
 from app.db.redis_client import get_redis
 from app.models.group_member import MemberRole
+from app.models.user import User
 from app.services.permissions_service import get_user_permissions
 from app.services.user_service import UserContext, refresh_user_cache_entry
 
-_AUTH_DATE_MAX_AGE = 86400  # 24 hours — Telegram recommendation
-
-
-# ---------------------------------------------------------------------------
-# Low-level: resolve the caller's identity (platform-agnostic)
-# ---------------------------------------------------------------------------
+_AUTH_DATE_MAX_AGE = 86400
 
 
 async def get_current_user(
@@ -35,9 +31,6 @@ async def get_current_user(
     x_vk_sign: str | None = Header(None, alias="X-VK-Sign"),
     authorization: str | None = Header(None),
 ) -> UserContext:
-    """Resolve caller identity from Telegram initData, VK sign, or JWT Bearer."""
-
-    # 1. Telegram initData
     if x_tg_data:
         user_dict = validate_tg_init_data(x_tg_data)
         if user_dict and user_dict.get("id"):
@@ -49,7 +42,7 @@ async def get_current_user(
                             status_code=401, detail="Telegram initData expired"
                         )
                 except (ValueError, TypeError):
-                    pass  # non-critical if auth_date is malformed
+                    pass
             return UserContext(
                 id=int(user_dict["id"]),
                 first_name=user_dict.get("first_name", ""),
@@ -58,28 +51,31 @@ async def get_current_user(
             )
         raise HTTPException(status_code=401, detail="Invalid Telegram initData")
 
-    # 2. VK sign — resolve vk_user_id → UserContext
     if x_vk_sign:
         settings = get_settings()
         vk_params = validate_vk_sign(x_vk_sign, settings.vk_protected_key)
         if vk_params and "vk_user_id" in vk_params:
             vk_user_id = int(vk_params["vk_user_id"])
-            person = next(
-                (p for p in STUDENTS + STAFF if p.get("vk_id") == vk_user_id), None
-            )
-            if person is None:
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.vk_user_id == vk_user_id)
+                )
+                user_obj = result.scalar_one_or_none()
+            if user_obj is None:
                 raise HTTPException(status_code=403, detail="NOT_IN_GROUP")
+            first_name = (
+                user_obj.full_name.split()[1]
+                if len(user_obj.full_name.split()) > 1
+                else user_obj.full_name
+            )
             return UserContext(
-                id=person["tg_id"],
-                first_name=person["name"].split()[1]
-                if len(person["name"].split()) > 1
-                else person["name"],
+                id=user_obj.tg_user_id or user_obj.id,
+                first_name=first_name,
                 username=None,
                 platform="vk",
             )
         raise HTTPException(status_code=401, detail="Invalid VK sign")
 
-    # 3. JWT Bearer (PC web / tests)
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ").strip()
         payload = decode_access_token(token)
@@ -93,23 +89,7 @@ async def get_current_user(
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
-# ---------------------------------------------------------------------------
-# Rich user context: identity + permissions from Redis/Postgres
-# ---------------------------------------------------------------------------
-
-
 class UserPermissionContext:
-    """
-    Enriched request context bundling identity and permission data.
-
-    Attributes:
-        user:           raw UserContext (id, first_name, platform, …)
-        is_superadmin:  True if the user is marked superadmin in DB OR their
-                        tg_user_id matches DEVELOPER_ID in config.
-        groups_roles:   Mapping of group_id (str) → role (str) for every
-                        group this user belongs to.
-    """
-
     __slots__ = ("user", "is_superadmin", "groups_roles")
 
     def __init__(
@@ -128,13 +108,7 @@ async def get_current_user_context(
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> UserPermissionContext:
-    """
-    FastAPI dependency: resolves the caller's identity and fetches (or caches)
-    their group-role permissions from Redis/Postgres.
-    """
     permissions = await get_user_permissions(user.id, session, redis)
-    # Обновляем кэш имени для текущего пользователя из БД, чтобы имя
-    # из таблицы users (напр., Четвериков Вадим) отображалось верно даже без перезапуска
     await refresh_user_cache_entry(user.id, session)
     return UserPermissionContext(
         user=user,
@@ -143,32 +117,7 @@ async def get_current_user_context(
     )
 
 
-# ---------------------------------------------------------------------------
-# Role-gate factory
-# ---------------------------------------------------------------------------
-
-
 def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
-    """
-    Dependency factory for group-scoped role checks.
-
-    Usage::
-
-        @router.get("/groups/{group_id}/attendance")
-        async def get_attendance(
-            group_id: int,
-            ctx: Annotated[UserPermissionContext,
-                           Depends(require_group_role([MemberRole.headman,
-                                                       MemberRole.deputy]))],
-        ): ...
-
-    Resolution order:
-    1. ``is_superadmin`` — always permitted.
-    2. Role in *group_id* is in *allowed_roles* — permitted.
-    3. Otherwise — 403 Forbidden.
-    """
-    # Normalise to plain strings so comparison works regardless of whether
-    # callers pass MemberRole enum members or raw strings.
     allowed_str: set[str] = {
         r.value if isinstance(r, MemberRole) else str(r) for r in allowed_roles
     }
@@ -190,15 +139,9 @@ def require_group_role(allowed_roles: list[MemberRole | str]) -> Callable:
     return _check
 
 
-# ---------------------------------------------------------------------------
-# Legacy gates — kept for backward compatibility with existing endpoints
-# ---------------------------------------------------------------------------
-
-
 async def require_admin(
     ctx: UserPermissionContext = Depends(get_current_user_context),
 ) -> UserPermissionContext:
-    """Requires the user to have superadmin status or an admin-level role in any group."""
     is_admin = ctx.is_superadmin or any(
         role in ["headman", "deputy", "curator"] for role in ctx.groups_roles.values()
     )
@@ -210,7 +153,6 @@ async def require_admin(
 async def require_developer(
     user: UserContext = Depends(get_current_user),
 ) -> UserContext:
-    """Permits access only to the developer (DEVELOPER_ID in config)."""
     if not user.is_developer:
         raise HTTPException(status_code=403, detail="Developer only")
     return user

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 import time
 
 import httpx
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def strip_html(text: str) -> str:
@@ -27,10 +30,13 @@ async def send_message(text: str, peer_id: int | None = None) -> None:
     }
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(
+            resp = await client.post(
                 "https://api.vk.com/method/messages.send",
                 data=params,
                 timeout=10,
             )
-        except Exception as e:
-            print(f"[vk] send_message error: {e}")
+            data = resp.json()
+            if "error" in data:
+                logger.error("[vk] send_message error: %s", data["error"])
+        except Exception:
+            logger.exception("[vk] send_message failed")

@@ -40,31 +40,11 @@ async def load_student_cache(session: AsyncSession) -> None:
     repo = StudentRepository(session)
     students = await repo.get_all()
 
-    # Auto-seed if students table is empty
-    if not students:
-        from app.data.students_data import STUDENTS
-        from app.models.student import Student
-
-        for s in STUDENTS:
-            session.add(Student(id=s["id"], name=s["name"], tg_id=s["tg_id"]))
-        try:
-            await session.commit()
-            students = await repo.get_all()
-        except Exception:
-            await session.rollback()
-
     if students:
         _tg_id_to_name = {s.tg_id: s.name for s in students if s.tg_id}
         _id_to_name = {s.id: s.name for s in students}
         _id_to_tg = {s.id: s.tg_id for s in students if s.tg_id}
-    else:
-        from app.data.students_data import STUDENTS
 
-        _tg_id_to_name = {s["tg_id"]: s["name"] for s in STUDENTS if s.get("tg_id")}
-        _id_to_name = {s["id"]: s["name"] for s in STUDENTS}
-        _id_to_tg = {s["id"]: s.get("tg_id", 0) for s in STUDENTS}
-
-    # Also load from newer users table
     from sqlalchemy import select
 
     from app.models.user import User
@@ -106,12 +86,6 @@ async def refresh_user_cache_entry(tg_user_id: int, session: AsyncSession) -> No
 
 
 def get_name_by_student_id(student_id: int) -> str:
-    if not _id_to_name:
-        from app.data.students_data import STUDENTS
-
-        for s in STUDENTS:
-            if s["id"] == student_id:
-                return s["name"]
     return _id_to_name.get(student_id, f"Студент {student_id}")
 
 
@@ -139,21 +113,10 @@ def get_full_name_by_tg(user: UserContext) -> str:
 
 
 def get_all_students() -> dict[int, str]:
-    if not _id_to_name:
-        from app.data.students_data import STUDENTS
-
-        return {s["id"]: s["name"] for s in STUDENTS}
     return dict(_id_to_name)
 
 
 def get_all_students_with_tg() -> list[dict]:
-    if not _id_to_name:
-        from app.data.students_data import STUDENTS
-
-        return [
-            {"id": s["id"], "name": s["name"], "tg_id": s.get("tg_id", 0)}
-            for s in STUDENTS
-        ]
     result = []
     for sid, name in _id_to_name.items():
         tg_id = _id_to_tg.get(sid, 0)

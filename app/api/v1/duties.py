@@ -13,7 +13,6 @@ from app.api.dependencies import (
     get_current_user_context,
 )
 from app.core.config import get_settings
-from app.data.students_data import EXCLUDED_DUTY_STUDENT_IDS
 from app.db.database import async_session_maker, get_db
 from app.integrations import telegram, vk
 from app.models.group import Group
@@ -33,6 +32,8 @@ from app.services.user_service import get_display_name
 from app.websocket.manager import manager
 
 router = APIRouter(tags=["duties"])
+
+EXCLUDED_DUTY_STUDENT_IDS: set[int] = set()
 
 
 async def _log_duties_action(
@@ -110,7 +111,6 @@ async def get_duties(
 
     result = []
     for u in users:
-        # Temporary compat for EXCLUDED_DUTY_STUDENT_IDS (by old ID)
         if u.id in EXCLUDED_DUTY_STUDENT_IDS:
             continue
         result.append(
