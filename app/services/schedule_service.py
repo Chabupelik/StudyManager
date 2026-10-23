@@ -5,12 +5,11 @@ from typing import Annotated
 
 import pytz
 from fastapi import BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession, async_session_maker
 from app.models.override import Override
-from app.models.schedule_new import Lesson, Schedule
+from app.models.schedule_new import Lesson
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
 from app.repositories.schedule_repo import ScheduleRepository
@@ -43,44 +42,15 @@ async def _log_schedule_action(
 async def get_base_times_for_date(
     session: AsyncSession, group_id: int, date_str: str
 ) -> set[str]:
-    weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-
-    stmt = (
-        select(Lesson.start_time)
-        .join(Schedule)
-        .where(
-            Schedule.group_id == group_id,
-            Schedule.day_of_week == weekday,
-            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
-            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
-        )
-    )
-    result = await session.execute(stmt)
-    times = result.scalars().all()
-    return {t.strftime("%H:%M") for t in times}
+    return await ScheduleRepository(session).get_base_times_for_date(group_id, date_str)
 
 
 async def get_base_lessons_for_date(
     session: AsyncSession, group_id: int, date_str: str
 ) -> list[dict]:
-    weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-
-    stmt = (
-        select(Lesson)
-        .join(Schedule)
-        .where(
-            Schedule.group_id == group_id,
-            Schedule.day_of_week == weekday,
-            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
-            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
-        )
-        .order_by(Lesson.start_time)
+    lessons = await ScheduleRepository(session).get_base_lessons_for_date(
+        group_id, date_str
     )
-    result = await session.execute(stmt)
-    lessons = result.scalars().all()
-
     return [
         {
             "time": l.start_time.strftime("%H:%M"),
@@ -185,33 +155,14 @@ async def get_subject_at(
         return None, None
 
     date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    repo = ScheduleRepository(session)
 
     if ovr and ovr["name"]:
-        stmt = (
-            select(Lesson.teacher)
-            .join(Schedule)
-            .where(Schedule.group_id == group_id, Lesson.name == ovr["name"])
-            .limit(1)
-        )
-        res = await session.execute(stmt)
-        teacher = res.scalar_one_or_none() or "Замена"
-        return ovr["name"], teacher
+        teacher = await repo.get_teacher_for_lesson_name(group_id, ovr["name"])
+        return ovr["name"], teacher or "Замена"
 
-    stmt = (
-        select(Lesson)
-        .join(Schedule)
-        .where(
-            Schedule.group_id == group_id,
-            Schedule.day_of_week == weekday,
-            Lesson.start_time == datetime.strptime(time_str, "%H:%M").time(),
-            (Lesson.valid_from <= date_obj) | (Lesson.valid_from.is_(None)),
-            (Lesson.valid_until >= date_obj) | (Lesson.valid_until.is_(None)),
-        )
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    match = result.scalar_one_or_none()
-
+    time_obj = datetime.strptime(time_str, "%H:%M").time()
+    match = await repo.get_lesson_at_time(group_id, weekday, time_obj, date_obj)
     if match:
         return match.name, match.teacher
     return None, None
@@ -360,13 +311,15 @@ class ScheduleService:
             group_id
         )
 
+        sched_to_day = {s.id: s.day_of_week for s in schedules}
+        lessons_by_day: dict[int, list[Lesson]] = {d: [] for d in range(0, 7)}
+        for l in lessons:
+            day = sched_to_day.get(l.schedule_id)
+            if day in lessons_by_day:
+                lessons_by_day[day].append(l)
+
         res = []
         for day in range(0, 7):
-            day_lessons = [
-                l
-                for l in lessons
-                if l.schedule_id in [s.id for s in schedules if s.day_of_week == day]
-            ]
             res.append(
                 {
                     "day_of_week": day,
@@ -390,7 +343,7 @@ class ScheduleService:
                                 else None
                             ),
                         }
-                        for l in day_lessons
+                        for l in lessons_by_day[day]
                     ],
                 }
             )
@@ -411,32 +364,34 @@ class ScheduleService:
                 status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
             )
 
-        schedule = await self.schedule_repo.get_by_group_and_day(group_id, day_of_week)
-        if not schedule:
-            schedule = Schedule(group_id=group_id, day_of_week=day_of_week)
-            self.schedule_repo.add(schedule)
-            await self.session.flush()
+        schedule = await self.schedule_repo.get_or_create_schedule(
+            group_id, day_of_week
+        )
 
-        lesson = Lesson(
+        start_time_obj = datetime.strptime(data["start_time"], "%H:%M").time()
+        end_time_obj = datetime.strptime(data["end_time"], "%H:%M").time()
+        valid_from_obj = (
+            datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
+            if data.get("valid_from")
+            else None
+        )
+        valid_until_obj = (
+            datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
+            if data.get("valid_until")
+            else None
+        )
+
+        lesson = await self.schedule_repo.create_lesson(
             schedule_id=schedule.id,
             lesson_number=data.get("lesson_number", 1),
             name=data["name"],
             teacher=data.get("teacher"),
             classroom=data.get("classroom"),
-            start_time=datetime.strptime(data["start_time"], "%H:%M").time(),
-            end_time=datetime.strptime(data["end_time"], "%H:%M").time(),
-            valid_from=(
-                datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
-                if data.get("valid_from")
-                else None
-            ),
-            valid_until=(
-                datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
-                if data.get("valid_until")
-                else None
-            ),
+            start_time=start_time_obj,
+            end_time=end_time_obj,
+            valid_from=valid_from_obj,
+            valid_until=valid_until_obj,
         )
-        self.schedule_repo.add_lesson(lesson)
         await self.session.commit()
         return {"status": "ok", "id": lesson.id}
 
@@ -462,32 +417,7 @@ class ScheduleService:
                 status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
             )
 
-        if "name" in data:
-            lesson.name = data["name"]
-        if "teacher" in data:
-            lesson.teacher = data["teacher"]
-        if "classroom" in data:
-            lesson.classroom = data["classroom"]
-        if "lesson_number" in data:
-            lesson.lesson_number = data["lesson_number"]
-        if "start_time" in data:
-            lesson.start_time = datetime.strptime(data["start_time"], "%H:%M").time()
-        if "end_time" in data:
-            lesson.end_time = datetime.strptime(data["end_time"], "%H:%M").time()
-
-        if "valid_from" in data:
-            lesson.valid_from = (
-                datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
-                if data["valid_from"]
-                else None
-            )
-        if "valid_until" in data:
-            lesson.valid_until = (
-                datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
-                if data["valid_until"]
-                else None
-            )
-
+        await self.schedule_repo.update_lesson(lesson, data)
         await self.session.commit()
         return {"status": "ok"}
 
