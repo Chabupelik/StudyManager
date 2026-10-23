@@ -27,6 +27,16 @@ class DutyRepository(BaseRepository[Duty]):
         )
         await self.session.execute(stmt)
 
+    async def upsert_many(self, records: list[dict]) -> None:
+        if not records:
+            return
+        stmt = pg_insert(Duty).values(records)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_group_user_duty",
+            set_={"date": stmt.excluded.date},
+        )
+        await self.session.execute(stmt)
+
     async def restore(self, group_id: int, user_id: int, date: str | None) -> None:
         if date is None:
             await self.session.execute(

@@ -16,6 +16,12 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_ids(self, user_ids: list[int]) -> list[User]:
+        if not user_ids:
+            return []
+        result = await self.session.execute(select(User).where(User.id.in_(user_ids)))
+        return list(result.scalars().all())
+
     async def get_by_vk_id(self, vk_user_id: int) -> User | None:
         result = await self.session.execute(
             select(User).where(User.vk_user_id == vk_user_id)
