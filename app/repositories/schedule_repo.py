@@ -35,6 +35,12 @@ class ScheduleRepository(BaseRepository[Schedule]):
         self.session.add(lesson)
         return lesson
 
+    async def get_lesson_by_id(self, lesson_id: int) -> Lesson | None:
+        return await self.session.get(Lesson, lesson_id)
+
+    async def delete_lesson(self, lesson: Lesson) -> None:
+        await self.session.delete(lesson)
+
     async def get_lessons_for_schedule(self, schedule_id: int) -> Sequence[Lesson]:
         result = await self.session.execute(
             select(Lesson)
@@ -56,3 +62,22 @@ class ScheduleRepository(BaseRepository[Schedule]):
             .order_by(Lesson.lesson_number, Lesson.start_time)
         )
         return result.scalars().all()
+
+    async def get_base_lessons_with_schedules(
+        self, group_id: int
+    ) -> tuple[Sequence[Schedule], Sequence[Lesson]]:
+        stmt_schedules = select(Schedule).where(Schedule.group_id == group_id)
+        schedules = (await self.session.execute(stmt_schedules)).scalars().all()
+
+        stmt_lessons = (
+            select(Lesson)
+            .join(Schedule)
+            .where(Schedule.group_id == group_id)
+            .order_by(
+                Schedule.day_of_week,
+                Lesson.valid_from.desc().nulls_first(),
+                Lesson.start_time,
+            )
+        )
+        lessons = (await self.session.execute(stmt_lessons)).scalars().all()
+        return schedules, lessons
