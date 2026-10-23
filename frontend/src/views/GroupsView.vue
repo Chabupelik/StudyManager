@@ -48,6 +48,7 @@ const memberFormName = ref('');
 const memberFormTgId = ref<string>('');
 const memberFormVkId = ref<string>('');
 const memberFormRole = ref<AddMemberBody['role']>('student');
+const memberFormIsDutyExempt = ref(false);
 const formError = ref('');
 const submitting = ref(false);
 
@@ -152,6 +153,7 @@ function openAddMember() {
   memberFormTgId.value = '';
   memberFormVkId.value = '';
   memberFormRole.value = 'student';
+  memberFormIsDutyExempt.value = false;
   formError.value = '';
   showAddMember.value = true;
 }
@@ -162,6 +164,7 @@ function openEditMember(m: any) {
   memberFormTgId.value = m.tg_user_id ? String(m.tg_user_id) : '';
   memberFormVkId.value = m.vk_user_id ? String(m.vk_user_id) : '';
   memberFormRole.value = m.role;
+  memberFormIsDutyExempt.value = Boolean(m.is_duty_exempt);
   formError.value = '';
   showEditMember.value = true;
 }
@@ -185,6 +188,7 @@ async function submitMemberForm() {
         tg_user_id: memberFormTgId.value ? Number(memberFormTgId.value) : null,
         vk_user_id: memberFormVkId.value ? Number(memberFormVkId.value) : null,
         role: memberFormRole.value,
+        is_duty_exempt: memberFormIsDutyExempt.value,
       });
       uiStore.showToast('Участник обновлён', 'success');
       showEditMember.value = false;
@@ -195,6 +199,7 @@ async function submitMemberForm() {
         tg_user_id: memberFormTgId.value ? Number(memberFormTgId.value) : null,
         vk_user_id: memberFormVkId.value ? Number(memberFormVkId.value) : null,
         role: memberFormRole.value,
+        is_duty_exempt: memberFormIsDutyExempt.value,
       });
       uiStore.showToast('Участник добавлен', 'success');
       showAddMember.value = false;
@@ -382,12 +387,20 @@ async function doDeleteGroup() {
               <!-- Name + role badge -->
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-semibold text-app-text truncate">{{ m.full_name }}</p>
-                <span
-                  class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border mt-0.5"
-                  :class="roleBadgeClass(m.role)"
-                >
-                  {{ roleLabel[m.role] }}
-                </span>
+                <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                  <span
+                    class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border"
+                    :class="roleBadgeClass(m.role)"
+                  >
+                    {{ roleLabel[m.role] }}
+                  </span>
+                  <span
+                    v-if="m.is_duty_exempt"
+                    class="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-amber-500/10 text-amber-500 border-amber-500/20"
+                  >
+                    Без дежурств
+                  </span>
+                </div>
               </div>
 
               <!-- IDs -->
@@ -552,6 +565,19 @@ async function doDeleteGroup() {
                 {{ roleLabel[r] }}
               </button>
             </div>
+
+            <!-- Duty exempt toggle -->
+            <label class="flex items-center justify-between p-3 rounded-xl bg-app-canvas border border-app-border cursor-pointer select-none hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors">
+              <div class="flex flex-col">
+                <span class="text-xs font-bold text-app-text">Освободить от дежурств</span>
+                <span class="text-[10px] text-app-muted">Не отображать студента в графике дежурств</span>
+              </div>
+              <input
+                v-model="memberFormIsDutyExempt"
+                type="checkbox"
+                class="w-4 h-4 rounded text-app-accent focus:ring-app-accent bg-app-card border-app-border cursor-pointer"
+              />
+            </label>
           </div>
 
           <p v-if="formError" class="text-red-400 text-xs font-medium">{{ formError }}</p>

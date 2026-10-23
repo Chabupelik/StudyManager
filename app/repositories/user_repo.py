@@ -33,7 +33,9 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
-    async def get_group_students(self, group_id: int) -> list[User]:
+    async def get_group_students(
+        self, group_id: int, exclude_duty_exempt: bool = False
+    ) -> list[User]:
         stmt = (
             select(User)
             .join(GroupMember, GroupMember.user_id == User.id)
@@ -45,5 +47,7 @@ class UserRepository(BaseRepository[User]):
             )
             .order_by(User.full_name)
         )
+        if exclude_duty_exempt:
+            stmt = stmt.where(GroupMember.is_duty_exempt.is_(False))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

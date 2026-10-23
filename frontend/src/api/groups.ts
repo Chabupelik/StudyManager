@@ -13,6 +13,7 @@ export interface Member {
   tg_user_id: number | null;
   vk_user_id: number | null;
   role: 'student' | 'deputy' | 'headman' | 'curator';
+  is_duty_exempt: boolean;
 }
 
 export interface CreateGroupBody {
@@ -32,6 +33,7 @@ export interface AddMemberBody {
   vk_user_id?: number | null;
   full_name: string;
   role: 'student' | 'deputy' | 'headman' | 'curator';
+  is_duty_exempt?: boolean;
 }
 
 export interface UpdateMemberBody {
@@ -39,6 +41,7 @@ export interface UpdateMemberBody {
   tg_user_id?: number | null;
   vk_user_id?: number | null;
   role?: 'student' | 'deputy' | 'headman' | 'curator';
+  is_duty_exempt?: boolean;
 }
 
 export const GroupsApi = {

@@ -29,6 +29,7 @@ class AddMemberRequest(BaseModel):
     vk_user_id: int | None = None
     full_name: str = Field(..., min_length=1, max_length=255)
     role: MemberRole = MemberRole.student
+    is_duty_exempt: bool = False
 
 
 class UpdateMemberRequest(BaseModel):
@@ -36,6 +37,7 @@ class UpdateMemberRequest(BaseModel):
     tg_user_id: int | None = None
     vk_user_id: int | None = None
     role: MemberRole | None = None
+    is_duty_exempt: bool | None = None
 
 
 class MemberResponse(BaseModel):
@@ -44,3 +46,4 @@ class MemberResponse(BaseModel):
     tg_user_id: int | None
     vk_user_id: int | None
     role: str
+    is_duty_exempt: bool = False

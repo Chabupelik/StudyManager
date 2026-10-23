@@ -159,6 +159,7 @@ class GroupService:
                 tg_user_id=user.tg_user_id,
                 vk_user_id=user.vk_user_id,
                 role=member.role,
+                is_duty_exempt=member.is_duty_exempt,
             )
             for user, member in rows
         ]
@@ -202,10 +203,12 @@ class GroupService:
                 user_id=user.id,
                 group_id=group_id,
                 role=body.role,
+                is_duty_exempt=body.is_duty_exempt,
             )
             self.member_repo.add(member)
         else:
             member.role = body.role
+            member.is_duty_exempt = body.is_duty_exempt
 
         await self.session.commit()
 
@@ -218,6 +221,7 @@ class GroupService:
             tg_user_id=user.tg_user_id,
             vk_user_id=user.vk_user_id,
             role=member.role,
+            is_duty_exempt=member.is_duty_exempt,
         )
 
     async def update_member(
@@ -253,6 +257,8 @@ class GroupService:
             user.vk_user_id = body.vk_user_id
         if body.role is not None:
             member.role = body.role
+        if body.is_duty_exempt is not None:
+            member.is_duty_exempt = body.is_duty_exempt
 
         await self.session.commit()
         if user.tg_user_id:
@@ -264,6 +270,7 @@ class GroupService:
             tg_user_id=user.tg_user_id,
             vk_user_id=user.vk_user_id,
             role=member.role,
+            is_duty_exempt=member.is_duty_exempt,
         )
 
     async def remove_member(self, group_id: int, user_id: int) -> None:

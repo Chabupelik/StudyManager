@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 
 import sqlalchemy as sa
-from sqlalchemy import ForeignKey, Index, Integer, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -42,4 +42,7 @@ class GroupMember(Base):
             length=20,
         ),
         nullable=False,
+    )
+    is_duty_exempt: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
     )

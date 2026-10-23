@@ -25,8 +25,6 @@ from app.services.schedule_service import (
 from app.services.user_service import AuthUser, get_display_name
 from app.websocket.manager import manager
 
-EXCLUDED_DUTY_STUDENT_IDS: set[int] = set()
-
 
 async def _log_duties_action(
     admin_name: str, action_type: str, details: str, user_id: int
@@ -109,12 +107,12 @@ class DutyService:
                 if r.status > 0:
                     absent_ids.add(r.user_id)
 
-        users = await self.user_repo.get_group_students(group_id)
+        users = await self.user_repo.get_group_students(
+            group_id, exclude_duty_exempt=True
+        )
 
         result = []
         for u in users:
-            if u.id in EXCLUDED_DUTY_STUDENT_IDS:
-                continue
             result.append(
                 {
                     "id": u.id,
