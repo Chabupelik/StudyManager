@@ -100,46 +100,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("tg_msg_id"),
     )
 
-    students_table = sa.table(
-        "students",
-        sa.column("id", sa.Integer),
-        sa.column("name", sa.String),
-        sa.column("tg_id", sa.BigInteger),
-    )
-    op.bulk_insert(
-        students_table,
-        [
-            {"id": 1, "name": "Голубева Ольга", "tg_id": 7610841443},
-            {"id": 2, "name": "Жуков Ярослав", "tg_id": 1693356589},
-            {"id": 3, "name": "Захарян Ангелина", "tg_id": 984245205},
-            {"id": 4, "name": "Исаев Исамутдин", "tg_id": 7312085971},
-            {"id": 5, "name": "Калашникова Виктория", "tg_id": 1145647467},
-            {"id": 6, "name": "Крюкова Екатерина", "tg_id": 5209067734},
-            {"id": 7, "name": "Лавренов Денис", "tg_id": 1776233614},
-            {"id": 8, "name": "Лапкин Никита", "tg_id": 786412327},
-            {"id": 9, "name": "Леваев Денис", "tg_id": 1380783132},
-            {"id": 10, "name": "Малюта Кирилл", "tg_id": 2036039791},
-            {"id": 11, "name": "Манин Даниил", "tg_id": 1426586903},
-            {"id": 12, "name": "Нестеренко Артем", "tg_id": 1590263622},
-            {"id": 13, "name": "Нестеренко Кирилл", "tg_id": 1816834428},
-            {"id": 14, "name": "Петровский Кирилл", "tg_id": 1049352750},
-            {"id": 15, "name": "Половинкин Максим", "tg_id": 5012979967},
-            {"id": 16, "name": "Попов Илья", "tg_id": 1678240030},
-            {"id": 17, "name": "Постнов Максим", "tg_id": 620159705},
-            {"id": 18, "name": "Резников Филипп", "tg_id": 1249491991},
-            {"id": 19, "name": "Скорик Глеб", "tg_id": 654109019},
-            {"id": 20, "name": "Филимонов Дмитрий", "tg_id": 6969927775},
-            {"id": 21, "name": "Франк Никита", "tg_id": 1329870096},
-            {"id": 22, "name": "Четвериков Вадим", "tg_id": 5273066461},
-        ],
-    )
-
 
 def downgrade() -> None:
     op.drop_table("message_bridge")
-    op.drop_table("ai_logs")
-    op.drop_table("gemini_history")
-    op.drop_table("gemini_users")
     op.drop_table("admins_online")
     op.drop_table("action_logs")
     op.drop_table("web_undos")
