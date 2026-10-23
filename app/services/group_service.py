@@ -7,8 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
 from app.db.redis_client import RedisClient
-from app.models.group import Group
-from app.models.group_member import GroupMember
 from app.models.user import User
 from app.repositories.group_member_repo import GroupMemberRepository
 from app.repositories.group_repo import GroupRepository
@@ -40,6 +38,18 @@ class GroupService:
         self.user_repo = user_repo
         self.redis = redis
 
+    async def _invalidate_permissions(self, user: User | None) -> None:
+        if not user:
+            return
+        if user.tg_user_id:
+            await invalidate_user_permissions(
+                user.tg_user_id, self.redis, platform="telegram"
+            )
+        if user.vk_user_id:
+            await invalidate_user_permissions(
+                user.vk_user_id, self.redis, platform="vk"
+            )
+
     async def create_group(
         self, body: GroupCreateRequest, current_user: AuthUser
     ) -> GroupResponse:
@@ -56,14 +66,13 @@ class GroupService:
                 detail=f"Group '{body.name}' already exists",
             )
 
-        group = Group(
+        group = await self.group_repo.create(
             name=body.name,
             tg_chat_id=body.tg_chat_id,
             vk_peer_id=body.vk_peer_id,
         )
-        self.group_repo.add(group)
         await self.session.commit()
-        await self.session.refresh(group)
+        await self.group_repo.refresh(group)
         return GroupResponse(
             id=group.id,
             name=group.name,
@@ -97,15 +106,15 @@ class GroupService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Group '{body.name}' already exists",
                 )
-            group.name = body.name
 
-        if body.tg_chat_id is not None:
-            group.tg_chat_id = body.tg_chat_id
-        if body.vk_peer_id is not None:
-            group.vk_peer_id = body.vk_peer_id
-
+        group = await self.group_repo.update(
+            group=group,
+            name=body.name,
+            tg_chat_id=body.tg_chat_id,
+            vk_peer_id=body.vk_peer_id,
+        )
         await self.session.commit()
-        await self.session.refresh(group)
+        await self.group_repo.refresh(group)
         return GroupResponse(
             id=group.id,
             name=group.name,
@@ -127,9 +136,12 @@ class GroupService:
                 detail="Group not found",
             )
 
-        await self.group_repo.delete_group_related_data(group_id)
-        await self.group_repo.delete(group)
+        members = await self.member_repo.get_members_with_users(group_id)
+        await self.group_repo.delete_group(group)
         await self.session.commit()
+
+        for user, _ in members:
+            await self._invalidate_permissions(user)
 
     async def get_my_groups(self, current_user: AuthUser) -> list[GroupResponse]:
         if current_user.is_superadmin:
@@ -178,42 +190,32 @@ class GroupService:
                 detail="Group not found",
             )
 
-        user: User | None = None
-        if body.tg_user_id:
-            user = await self.user_repo.get_by_tg_id(body.tg_user_id)
-
-        if user is None and body.vk_user_id:
-            user = await self.user_repo.get_by_vk_id(body.vk_user_id)
+        user = await self.user_repo.get_by_external_id(
+            tg_user_id=body.tg_user_id,
+            vk_user_id=body.vk_user_id,
+        )
 
         if user is None:
-            user = User(
+            user = await self.user_repo.create(
+                full_name=body.full_name,
                 tg_user_id=body.tg_user_id,
                 vk_user_id=body.vk_user_id,
-                full_name=body.full_name,
             )
-            self.user_repo.add(user)
-            await self.session.flush()
         else:
             if body.full_name and user.full_name != body.full_name:
-                user.full_name = body.full_name
+                user = await self.user_repo.update(user, full_name=body.full_name)
 
-        member = await self.member_repo.get_member(group_id, user.id)
-        if member is None:
-            member = GroupMember(
-                user_id=user.id,
-                group_id=group_id,
-                role=body.role,
-                is_duty_exempt=body.is_duty_exempt,
-            )
-            self.member_repo.add(member)
-        else:
-            member.role = body.role
-            member.is_duty_exempt = body.is_duty_exempt
+        role_str = body.role.value if hasattr(body.role, "value") else str(body.role)
+        member = await self.member_repo.upsert_member(
+            group_id=group_id,
+            user_id=user.id,
+            role=role_str,
+            is_duty_exempt=body.is_duty_exempt,
+        )
 
         await self.session.commit()
 
-        if user.tg_user_id:
-            await invalidate_user_permissions(user.tg_user_id, self.redis)
+        await self._invalidate_permissions(user)
 
         return MemberResponse(
             user_id=user.id,
@@ -241,8 +243,6 @@ class GroupService:
                 detail="User not found",
             )
 
-        if body.full_name is not None:
-            user.full_name = body.full_name
         if body.tg_user_id is not None:
             conflict = await self.user_repo.get_by_tg_id_excluding(
                 body.tg_user_id, user_id
@@ -252,17 +252,47 @@ class GroupService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"tg_user_id {body.tg_user_id} is already taken by another user",
                 )
-            user.tg_user_id = body.tg_user_id
+
         if body.vk_user_id is not None:
-            user.vk_user_id = body.vk_user_id
-        if body.role is not None:
-            member.role = body.role
-        if body.is_duty_exempt is not None:
-            member.is_duty_exempt = body.is_duty_exempt
+            conflict_vk = await self.user_repo.get_by_vk_id_excluding(
+                body.vk_user_id, user_id
+            )
+            if conflict_vk:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"vk_user_id {body.vk_user_id} is already taken by another user",
+                )
+
+        old_tg_id = user.tg_user_id
+        old_vk_id = user.vk_user_id
+
+        user = await self.user_repo.update(
+            user=user,
+            full_name=body.full_name,
+            tg_user_id=body.tg_user_id,
+            vk_user_id=body.vk_user_id,
+        )
+
+        role_str = (
+            body.role.value
+            if (body.role is not None and hasattr(body.role, "value"))
+            else (str(body.role) if body.role is not None else None)
+        )
+        member = await self.member_repo.update_member(
+            member=member,
+            role=role_str,
+            is_duty_exempt=body.is_duty_exempt,
+        )
 
         await self.session.commit()
-        if user.tg_user_id:
-            await invalidate_user_permissions(user.tg_user_id, self.redis)
+
+        await self._invalidate_permissions(user)
+        if old_tg_id and old_tg_id != user.tg_user_id:
+            await invalidate_user_permissions(
+                old_tg_id, self.redis, platform="telegram"
+            )
+        if old_vk_id and old_vk_id != user.vk_user_id:
+            await invalidate_user_permissions(old_vk_id, self.redis, platform="vk")
 
         return MemberResponse(
             user_id=user.id,
@@ -274,19 +304,16 @@ class GroupService:
         )
 
     async def remove_member(self, group_id: int, user_id: int) -> None:
-        member = await self.member_repo.get_member(group_id, user_id)
-        if member is None:
+        user = await self.user_repo.get_by_id(user_id)
+        deleted = await self.member_repo.remove_member(group_id, user_id)
+        if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Member not found in this group",
             )
 
-        await self.member_repo.delete(member)
         await self.session.commit()
-
-        user = await self.user_repo.get_by_id(user_id)
-        if user and user.tg_user_id:
-            await invalidate_user_permissions(user.tg_user_id, self.redis)
+        await self._invalidate_permissions(user)
 
 
 def get_group_service(db: DbSession, redis: RedisClient) -> GroupService:

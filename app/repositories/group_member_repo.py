@@ -32,3 +32,45 @@ class GroupMemberRepository(BaseRepository[GroupMember]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def upsert_member(
+        self,
+        group_id: int,
+        user_id: int,
+        role: str,
+        is_duty_exempt: bool = False,
+    ) -> GroupMember:
+        member = await self.get_member(group_id, user_id)
+        if member is None:
+            member = GroupMember(
+                user_id=user_id,
+                group_id=group_id,
+                role=role,
+                is_duty_exempt=is_duty_exempt,
+            )
+            self.session.add(member)
+        else:
+            member.role = role
+            member.is_duty_exempt = is_duty_exempt
+        await self.session.flush()
+        return member
+
+    async def update_member(
+        self,
+        member: GroupMember,
+        role: str | None = None,
+        is_duty_exempt: bool | None = None,
+    ) -> GroupMember:
+        if role is not None:
+            member.role = role
+        if is_duty_exempt is not None:
+            member.is_duty_exempt = is_duty_exempt
+        await self.session.flush()
+        return member
+
+    async def remove_member(self, group_id: int, user_id: int) -> bool:
+        member = await self.get_member(group_id, user_id)
+        if member is None:
+            return False
+        await self.delete(member)
+        return True

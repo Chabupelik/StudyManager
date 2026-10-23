@@ -34,3 +34,34 @@ class GroupRepository(BaseRepository[Group]):
             delete(Attendance).where(Attendance.group_id == group_id)
         )
         await self.session.execute(delete(Duty).where(Duty.group_id == group_id))
+
+    async def create(
+        self,
+        name: str,
+        tg_chat_id: int | None = None,
+        vk_peer_id: int | None = None,
+    ) -> Group:
+        group = Group(name=name, tg_chat_id=tg_chat_id, vk_peer_id=vk_peer_id)
+        self.session.add(group)
+        await self.session.flush()
+        return group
+
+    async def update(
+        self,
+        group: Group,
+        name: str | None = None,
+        tg_chat_id: int | None = None,
+        vk_peer_id: int | None = None,
+    ) -> Group:
+        if name is not None:
+            group.name = name
+        if tg_chat_id is not None:
+            group.tg_chat_id = tg_chat_id
+        if vk_peer_id is not None:
+            group.vk_peer_id = vk_peer_id
+        await self.session.flush()
+        return group
+
+    async def delete_group(self, group: Group) -> None:
+        await self.delete_group_related_data(group.id)
+        await self.session.delete(group)
