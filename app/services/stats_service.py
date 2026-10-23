@@ -5,21 +5,17 @@ from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
 from app.models.attendance import Attendance
 from app.models.override import Override
-from app.models.schedule_new import Lesson, Schedule
+from app.models.schedule_new import Lesson
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
+from app.repositories.schedule_repo import ScheduleRepository
 from app.repositories.user_repo import UserRepository
-from app.services.schedule_service import (
-    compute_active_times,
-    get_base_times_for_date,
-    get_subject_at,
-)
+from app.services.schedule_service import compute_active_times
 from app.services.user_service import AuthUser
 
 
@@ -34,16 +30,20 @@ def _build_override_map(overrides: list[Override]) -> dict[tuple[str, str], dict
     return result
 
 
-async def _get_base_lessons(
-    session: AsyncSession, group_id: int
-) -> list[tuple[Lesson, int]]:
-    stmt = (
-        select(Lesson, Schedule.day_of_week)
-        .join(Schedule)
-        .where(Schedule.group_id == group_id)
-    )
-    res = await session.execute(stmt)
-    return list(res.all())
+def _compute_base_times_for_date_memory(
+    date_str: str,
+    base_lessons: list[tuple[Lesson, int]],
+) -> set[str]:
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    wday = date_obj.weekday()
+    base_times = set()
+    for l, day in base_lessons:
+        if day == wday:
+            if (l.valid_from is None or l.valid_from <= date_obj) and (
+                l.valid_until is None or l.valid_until >= date_obj
+            ):
+                base_times.add(l.start_time.strftime("%H:%M"))
+    return base_times
 
 
 def compute_total_hours(
@@ -87,43 +87,14 @@ def get_semester_dates(year: int, month: int) -> tuple[str, str]:
         return f"{year}-01-01", f"{year}-08-31"
 
 
-async def compute_month_hours(
-    session: AsyncSession,
-    group_id: int,
-    year: int,
-    month: int,
-    overrides: list[Override],
+def compute_lifetime_hours(
+    base_lessons: list[tuple[Lesson, int]], overrides: list[Override]
 ) -> int:
-    _, last_day = calendar.monthrange(year, month)
-    from_str = f"{year}-{month:02d}-01"
-    to_str = f"{year}-{month:02d}-{last_day:02d}"
-    base_lessons = await _get_base_lessons(session, group_id)
-    return compute_total_hours(overrides, base_lessons, from_str, to_str)
-
-
-async def compute_semester_hours(
-    session: AsyncSession,
-    group_id: int,
-    year: int,
-    month: int,
-    overrides: list[Override],
-) -> int:
-    from_str, to_str = get_semester_dates(year, month)
-    base_lessons = await _get_base_lessons(session, group_id)
-    return compute_total_hours(overrides, base_lessons, from_str, to_str)
-
-
-async def compute_lifetime_hours(
-    session: AsyncSession, group_id: int, overrides: list[Override]
-) -> int:
-    base_lessons = await _get_base_lessons(session, group_id)
-
     start_dates = [l.valid_from for l, _ in base_lessons if l.valid_from]
     if not start_dates:
         return 0
     from_str = min(start_dates).strftime("%Y-%m-%d")
     to_str = datetime.now().strftime("%Y-%m-%d")
-
     return compute_total_hours(overrides, base_lessons, from_str, to_str)
 
 
@@ -184,20 +155,17 @@ def _get_subject_at_memory(
     return None, None
 
 
-async def compute_subject_stats(
-    session: AsyncSession,
-    group_id: int,
+def compute_subject_stats(
     student_id: int,
     absences: list[Attendance],
     overrides: list[Override],
+    base_lessons: list[tuple[Lesson, int]],
     month_prefix: str,
     semester_start: str | None = None,
     semester_end: str | None = None,
 ) -> list[dict]:
     override_map = _build_override_map(overrides)
     today_dt = datetime.now()
-
-    base_lessons = await _get_base_lessons(session, group_id)
 
     if semester_start:
         sem_start_dt = datetime.strptime(semester_start, "%Y-%m-%d").date()
@@ -295,32 +263,33 @@ class StatsService:
         att_repo: AttendanceRepository,
         ovr_repo: OverrideRepository,
         user_repo: UserRepository,
+        schedule_repo: ScheduleRepository,
     ) -> None:
         self.session = session
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
         self.user_repo = user_repo
+        self.schedule_repo = schedule_repo
 
-    async def get_stats(
-        self,
-        year: str,
-        month: str,
-        current_user: AuthUser,
-        group_id: int | None = None,
-    ) -> dict:
-        month_prefix = f"{year}-{month}-"
-        y_int = int(year)
-        m_int = int(month)
-        sem_start, sem_end = get_semester_dates(y_int, m_int)
+    def _parse_year_month(self, year: str, month: str) -> tuple[int, int, str]:
+        try:
+            y_int = int(year)
+            m_int = int(month)
+            if m_int < 1 or m_int > 12:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid year or month format",
+            )
+        month_prefix = f"{y_int}-{m_int:02d}-"
+        return y_int, m_int, month_prefix
 
+    def _resolve_target_group(
+        self, group_id: int | None, current_user: AuthUser
+    ) -> int | None:
         if not current_user.groups_roles and not current_user.is_superadmin:
-            return {
-                "total_month_hours": 0,
-                "total_lifetime_hours": 0,
-                "total_semester_hours": 0,
-                "stats": [],
-            }
-
+            return None
         if group_id is not None:
             if (
                 not current_user.is_superadmin
@@ -329,13 +298,34 @@ class StatsService:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
                 )
-            target_group_id = group_id
-        else:
-            target_group_id = (
-                int(next(iter(current_user.groups_roles.keys())))
-                if current_user.groups_roles
-                else 1
-            )
+            return group_id
+        return (
+            int(next(iter(current_user.groups_roles.keys())))
+            if current_user.groups_roles
+            else 1
+        )
+
+    async def get_stats(
+        self,
+        year: str,
+        month: str,
+        current_user: AuthUser,
+        group_id: int | None = None,
+    ) -> dict:
+        y_int, m_int, month_prefix = self._parse_year_month(year, month)
+        target_group_id = self._resolve_target_group(group_id, current_user)
+        if target_group_id is None:
+            return {
+                "total_month_hours": 0,
+                "total_lifetime_hours": 0,
+                "total_semester_hours": 0,
+                "stats": [],
+            }
+
+        sem_start, sem_end = get_semester_dates(y_int, m_int)
+        _, last_day = calendar.monthrange(y_int, m_int)
+        month_start = f"{y_int}-{m_int:02d}-01"
+        month_end = f"{y_int}-{m_int:02d}-{last_day:02d}"
 
         semester_records = await self.att_repo.get_stats_for_period(
             target_group_id, sem_start, sem_end
@@ -343,15 +333,17 @@ class StatsService:
         month_records = await self.att_repo.get_stats_for_month(
             target_group_id, month_prefix
         )
-        overrides = await self.ovr_repo.get_all()
+        overrides = await self.ovr_repo.get_for_group(target_group_id)
+        base_lessons = await self.schedule_repo.get_lessons_with_days(target_group_id)
 
         aggregated = aggregate_student_stats(semester_records, month_records)
-        total_month_hours = await compute_month_hours(
-            self.session, target_group_id, y_int, m_int, overrides
+        total_month_hours = compute_total_hours(
+            overrides, base_lessons, month_start, month_end
         )
-        total_semester_hours = await compute_semester_hours(
-            self.session, target_group_id, y_int, m_int, overrides
+        total_semester_hours = compute_total_hours(
+            overrides, base_lessons, sem_start, sem_end
         )
+        total_lifetime_hours = compute_lifetime_hours(base_lessons, overrides)
 
         users = await self.user_repo.get_group_students(target_group_id)
 
@@ -374,7 +366,7 @@ class StatsService:
 
         return {
             "total_month_hours": total_month_hours,
-            "total_lifetime_hours": total_semester_hours,
+            "total_lifetime_hours": total_lifetime_hours,
             "total_semester_hours": total_semester_hours,
             "stats": result,
         }
@@ -385,27 +377,13 @@ class StatsService:
         current_user: AuthUser,
         group_id: int | None = None,
     ) -> dict:
-        if not current_user.groups_roles and not current_user.is_superadmin:
+        target_group_id = self._resolve_target_group(group_id, current_user)
+        if target_group_id is None:
             return {"absences": []}
 
-        if group_id is not None:
-            if (
-                not current_user.is_superadmin
-                and str(group_id) not in current_user.groups_roles
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-                )
-            target_group_id = group_id
-        else:
-            target_group_id = (
-                int(next(iter(current_user.groups_roles.keys())))
-                if current_user.groups_roles
-                else 1
-            )
-
         absences = await self.att_repo.get_student_absences(target_group_id, student_id)
-        overrides = await self.ovr_repo.get_all()
+        overrides = await self.ovr_repo.get_for_group(target_group_id)
+        base_lessons = await self.schedule_repo.get_lessons_with_days(target_group_id)
 
         override_map = _build_override_map(overrides)
 
@@ -417,15 +395,13 @@ class StatsService:
             weekday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
 
             if d_str not in day_totals:
-                base_times = await get_base_times_for_date(
-                    self.session, target_group_id, d_str
-                )
+                base_times = _compute_base_times_for_date_memory(d_str, base_lessons)
                 day_ovrs = [o for o in overrides if o.date == d_str]
                 active = compute_active_times(base_times, day_ovrs)
                 day_totals[d_str] = len(active) * 2
 
-            name, _ = await get_subject_at(
-                self.session, target_group_id, d_str, t_str, weekday, override_map
+            name, _ = _get_subject_at_memory(
+                d_str, t_str, weekday, override_map, base_lessons
             )
             if not name:
                 name = "Доп. занятие"
@@ -452,39 +428,22 @@ class StatsService:
         current_user: AuthUser,
         group_id: int | None = None,
     ) -> dict:
-        month_prefix = f"{year}-{month}-"
-        y_int = int(year)
-        m_int = int(month)
-        sem_start, sem_end = get_semester_dates(y_int, m_int)
-
-        if not current_user.groups_roles and not current_user.is_superadmin:
+        y_int, m_int, month_prefix = self._parse_year_month(year, month)
+        target_group_id = self._resolve_target_group(group_id, current_user)
+        if target_group_id is None:
             return {"subjects": []}
 
-        if group_id is not None:
-            if (
-                not current_user.is_superadmin
-                and str(group_id) not in current_user.groups_roles
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-                )
-            target_group_id = group_id
-        else:
-            target_group_id = (
-                int(next(iter(current_user.groups_roles.keys())))
-                if current_user.groups_roles
-                else 1
-            )
+        sem_start, sem_end = get_semester_dates(y_int, m_int)
 
         absences = await self.att_repo.get_student_absences(target_group_id, student_id)
-        overrides = await self.ovr_repo.get_all()
+        overrides = await self.ovr_repo.get_for_group(target_group_id)
+        base_lessons = await self.schedule_repo.get_lessons_with_days(target_group_id)
 
-        subjects = await compute_subject_stats(
-            self.session,
-            target_group_id,
+        subjects = compute_subject_stats(
             student_id,
             absences,
             overrides,
+            base_lessons,
             month_prefix,
             sem_start,
             sem_end,
@@ -498,6 +457,7 @@ def get_stats_service(db: DbSession) -> StatsService:
         att_repo=AttendanceRepository(db),
         ovr_repo=OverrideRepository(db),
         user_repo=UserRepository(db),
+        schedule_repo=ScheduleRepository(db),
     )
 
 

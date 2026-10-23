@@ -164,6 +164,15 @@ class ScheduleRepository(BaseRepository[Schedule]):
         lessons = (await self.session.execute(stmt_lessons)).scalars().all()
         return schedules, lessons
 
+    async def get_lessons_with_days(self, group_id: int) -> list[tuple[Lesson, int]]:
+        stmt = (
+            select(Lesson, Schedule.day_of_week)
+            .join(Schedule)
+            .where(Schedule.group_id == group_id)
+        )
+        res = await self.session.execute(stmt)
+        return list(res.all())
+
     async def get_base_times_for_date(self, group_id: int, date_str: str) -> set[str]:
         weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()

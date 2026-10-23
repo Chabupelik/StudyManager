@@ -20,6 +20,12 @@ class OverrideRepository(BaseRepository[Override]):
         result = await self.session.execute(select(Override))
         return list(result.scalars().all())
 
+    async def get_for_group(self, group_id: int) -> list[Override]:
+        result = await self.session.execute(
+            select(Override).where(Override.group_id == group_id)
+        )
+        return list(result.scalars().all())
+
     async def upsert(
         self,
         group_id: int,
