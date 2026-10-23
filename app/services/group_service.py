@@ -168,9 +168,7 @@ class GroupService:
             groups = await self.group_repo.get_all_ordered_by_name()
         else:
             group_ids = [
-                int(gid)
-                for gid in (current_user.groups_roles or {})
-                if str(gid).isdigit()
+                int(gid) for gid in (current_user.groups_roles or {}) if gid.isdigit()
             ]
             if not group_ids:
                 return []

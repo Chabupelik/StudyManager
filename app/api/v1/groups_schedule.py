@@ -48,7 +48,7 @@ async def create_schedule(
     user: CanManageSchedule,
     service: GroupsScheduleSrv,
 ) -> ScheduleResponse:
-    return await service.create_schedule(group_id, body)
+    return await service.create_schedule(group_id, body, user)
 
 
 @router.post(
@@ -63,7 +63,7 @@ async def add_lesson(
     user: CanManageSchedule,
     service: GroupsScheduleSrv,
 ) -> LessonResponse:
-    return await service.add_lesson(group_id, schedule_id, body)
+    return await service.add_lesson(group_id, schedule_id, body, user)
 
 
 @router.get(
@@ -75,7 +75,7 @@ async def get_today_schedule(
     user: CanViewSchedule,
     service: GroupsScheduleSrv,
 ) -> TodayLessonResponse:
-    return await service.get_today_schedule(group_id)
+    return await service.get_today_schedule(group_id, user)
 
 
 @router.get(
@@ -87,4 +87,4 @@ async def get_full_schedule(
     user: CanViewSchedule,
     service: GroupsScheduleSrv,
 ) -> list[ScheduleResponse]:
-    return await service.get_full_schedule(group_id)
+    return await service.get_full_schedule(group_id, user)

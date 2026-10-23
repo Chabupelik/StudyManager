@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, time
 
 from sqlalchemy import select
 
@@ -31,12 +31,54 @@ class ScheduleRepository(BaseRepository[Schedule]):
         )
         return result.scalars().all()
 
+    async def create_schedule(self, group_id: int, day_of_week: int) -> Schedule:
+        sched = Schedule(group_id=group_id, day_of_week=day_of_week)
+        self.session.add(sched)
+        await self.session.flush()
+        return sched
+
+    async def get_or_create_schedule(self, group_id: int, day_of_week: int) -> Schedule:
+        sched = await self.get_by_group_and_day(group_id, day_of_week)
+        if sched is None:
+            sched = await self.create_schedule(group_id, day_of_week)
+        return sched
+
     def add_lesson(self, lesson: Lesson) -> Lesson:
         self.session.add(lesson)
         return lesson
 
+    async def create_lesson(
+        self,
+        schedule_id: int,
+        lesson_number: int,
+        name: str,
+        start_time: time,
+        end_time: time,
+        teacher: str | None = None,
+        classroom: str | None = None,
+        valid_from: date | None = None,
+        valid_until: date | None = None,
+    ) -> Lesson:
+        lesson = Lesson(
+            schedule_id=schedule_id,
+            lesson_number=lesson_number,
+            name=name,
+            teacher=teacher,
+            classroom=classroom,
+            start_time=start_time,
+            end_time=end_time,
+            valid_from=valid_from,
+            valid_until=valid_until,
+        )
+        self.session.add(lesson)
+        await self.session.flush()
+        return lesson
+
     async def get_lesson_by_id(self, lesson_id: int) -> Lesson | None:
         return await self.session.get(Lesson, lesson_id)
+
+    async def refresh_lesson(self, lesson: Lesson) -> None:
+        await self.session.refresh(lesson)
 
     async def delete_lesson(self, lesson: Lesson) -> None:
         await self.session.delete(lesson)
@@ -45,6 +87,18 @@ class ScheduleRepository(BaseRepository[Schedule]):
         result = await self.session.execute(
             select(Lesson)
             .where(Lesson.schedule_id == schedule_id)
+            .order_by(Lesson.lesson_number, Lesson.start_time)
+        )
+        return result.scalars().all()
+
+    async def get_lessons_for_schedules(
+        self, schedule_ids: Sequence[int]
+    ) -> Sequence[Lesson]:
+        if not schedule_ids:
+            return []
+        result = await self.session.execute(
+            select(Lesson)
+            .where(Lesson.schedule_id.in_(schedule_ids))
             .order_by(Lesson.lesson_number, Lesson.start_time)
         )
         return result.scalars().all()

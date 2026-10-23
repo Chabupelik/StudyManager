@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
-from app.models.schedule_new import Lesson, Schedule
+from app.models.schedule_new import Lesson
 from app.repositories.group_repo import GroupRepository
 from app.repositories.schedule_repo import ScheduleRepository
 from app.schemas.groups_schedule import (
@@ -17,6 +17,7 @@ from app.schemas.groups_schedule import (
     ScheduleResponse,
     TodayLessonResponse,
 )
+from app.services.user_service import AuthUser
 
 _DAY_NAMES = {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
 
@@ -46,9 +47,33 @@ class GroupsScheduleService:
         self.schedule_repo = schedule_repo
         self.group_repo = group_repo
 
+    def _check_can_view(self, group_id: int, user: AuthUser) -> None:
+        if user.is_superadmin:
+            return
+        role = (user.groups_roles or {}).get(str(group_id))
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: not a member of this group",
+            )
+
+    def _check_can_manage(self, group_id: int, user: AuthUser) -> None:
+        if user.is_superadmin:
+            return
+        role = (user.groups_roles or {}).get(str(group_id))
+        if role not in ("headman", "curator"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: insufficient permissions in this group",
+            )
+
     async def create_schedule(
-        self, group_id: int, body: ScheduleCreateRequest
+        self,
+        group_id: int,
+        body: ScheduleCreateRequest,
+        current_user: AuthUser,
     ) -> ScheduleResponse:
+        self._check_can_manage(group_id, current_user)
         group = await self.group_repo.get_by_id(group_id)
         if group is None:
             raise HTTPException(
@@ -66,13 +91,12 @@ class GroupsScheduleService:
                 detail=f"Schedule for day {body.day_of_week} ({day_name}) already exists for this group",
             )
 
-        sched = Schedule(
+        sched = await self.schedule_repo.create_schedule(
             group_id=group_id,
             day_of_week=body.day_of_week,
         )
-        self.schedule_repo.add(sched)
         await self.session.commit()
-        await self.session.refresh(sched)
+        await self.schedule_repo.refresh(sched)
         return ScheduleResponse(
             id=sched.id,
             group_id=sched.group_id,
@@ -81,8 +105,13 @@ class GroupsScheduleService:
         )
 
     async def add_lesson(
-        self, group_id: int, schedule_id: int, body: LessonCreateRequest
+        self,
+        group_id: int,
+        schedule_id: int,
+        body: LessonCreateRequest,
+        current_user: AuthUser,
     ) -> LessonResponse:
+        self._check_can_manage(group_id, current_user)
         schedule = await self.schedule_repo.get_by_id(schedule_id)
         if schedule is None or schedule.group_id != group_id:
             raise HTTPException(
@@ -90,7 +119,7 @@ class GroupsScheduleService:
                 detail="Schedule not found in this group",
             )
 
-        lesson = Lesson(
+        lesson = await self.schedule_repo.create_lesson(
             schedule_id=schedule_id,
             lesson_number=body.lesson_number,
             name=body.name,
@@ -101,12 +130,14 @@ class GroupsScheduleService:
             valid_from=body.valid_from,
             valid_until=body.valid_until,
         )
-        self.schedule_repo.add_lesson(lesson)
         await self.session.commit()
-        await self.session.refresh(lesson)
+        await self.schedule_repo.refresh_lesson(lesson)
         return _lesson_to_response(lesson)
 
-    async def get_today_schedule(self, group_id: int) -> TodayLessonResponse:
+    async def get_today_schedule(
+        self, group_id: int, current_user: AuthUser
+    ) -> TodayLessonResponse:
+        self._check_can_view(group_id, current_user)
         today = date.today()
         iso_dow = today.isoweekday()
         if iso_dow == 7:
@@ -125,20 +156,33 @@ class GroupsScheduleService:
             lessons=[_lesson_to_response(l) for l in lessons],
         )
 
-    async def get_full_schedule(self, group_id: int) -> list[ScheduleResponse]:
+    async def get_full_schedule(
+        self, group_id: int, current_user: AuthUser
+    ) -> list[ScheduleResponse]:
+        self._check_can_view(group_id, current_user)
         schedules = await self.schedule_repo.get_all_for_group(group_id)
-        out = []
-        for sched in schedules:
-            lessons = await self.schedule_repo.get_lessons_for_schedule(sched.id)
-            out.append(
-                ScheduleResponse(
-                    id=sched.id,
-                    group_id=sched.group_id,
-                    day_of_week=sched.day_of_week,
-                    lessons=[_lesson_to_response(l) for l in lessons],
-                )
+        if not schedules:
+            return []
+
+        schedule_ids = [sched.id for sched in schedules]
+        all_lessons = await self.schedule_repo.get_lessons_for_schedules(schedule_ids)
+
+        lessons_by_schedule: dict[int, list[Lesson]] = {sid: [] for sid in schedule_ids}
+        for l in all_lessons:
+            lessons_by_schedule[l.schedule_id].append(l)
+
+        return [
+            ScheduleResponse(
+                id=sched.id,
+                group_id=sched.group_id,
+                day_of_week=sched.day_of_week,
+                lessons=[
+                    _lesson_to_response(l)
+                    for l in lessons_by_schedule.get(sched.id, [])
+                ],
             )
-        return out
+            for sched in schedules
+        ]
 
 
 def get_groups_schedule_service(db: DbSession) -> GroupsScheduleService:
