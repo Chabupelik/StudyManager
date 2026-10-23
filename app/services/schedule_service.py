@@ -17,7 +17,7 @@ from app.repositories.schedule_repo import ScheduleRepository
 from app.schemas.schedule import OverrideUpdateRequest, ScheduleResponse
 from app.services.audit_service import log_action
 from app.services.user_service import AuthUser, get_display_name
-from app.websocket.manager import manager
+from app.services.websocket_service import WebSocketService
 
 MSK = pytz.timezone("Europe/Moscow")
 LESSON_DURATION_MINUTES = 90
@@ -330,7 +330,7 @@ class ScheduleService:
             await self.att_repo.delete_for_lesson(target_group_id, data.date, data.time)
 
         await self.session.commit()
-        await manager.broadcast({"type": "override", "date": data.date})
+        await WebSocketService.broadcast_override(data.date)
 
         admin_name = get_display_name(current_user)
         action = "Отмена пары" if data.is_canceled else "Замена пары"

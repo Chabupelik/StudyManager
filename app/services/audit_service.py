@@ -13,7 +13,7 @@ from app.models.group_member import GroupMember
 from app.models.user import User
 from app.repositories.audit_repo import AuditRepository
 from app.services.user_service import AuthUser
-from app.websocket.manager import manager
+from app.services.websocket_service import WebSocketService
 
 
 class AuditService:
@@ -35,15 +35,12 @@ class AuditService:
         entry = await self.repo.log_action(admin_name, action_type, details)
         await self.session.commit()
 
-        await manager.broadcast(
+        await WebSocketService.broadcast_new_log(
             {
-                "type": "new_log",
-                "entry": {
-                    "admin_name": entry.admin_name,
-                    "action_type": entry.action_type,
-                    "details": entry.details,
-                    "created_at": entry.created_at,
-                },
+                "admin_name": entry.admin_name,
+                "action_type": entry.action_type,
+                "details": entry.details,
+                "created_at": entry.created_at,
             }
         )
 
@@ -52,12 +49,9 @@ class AuditService:
             name = user.display_name
             await self.repo.upsert_admin_online(user.id, name)
             await self.session.commit()
-            await manager.broadcast(
-                {
-                    "type": "admin_status",
-                    "user_id": user.id,
-                    "last_seen": time.time(),
-                }
+            await WebSocketService.broadcast_admin_status(
+                user_id=user.id,
+                last_seen=time.time(),
             )
         return {"status": "ok"}
 

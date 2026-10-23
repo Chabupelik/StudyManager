@@ -23,7 +23,7 @@ from app.services.schedule_service import (
     get_base_times_for_date,
 )
 from app.services.user_service import AuthUser, get_display_name
-from app.websocket.manager import manager
+from app.services.websocket_service import WebSocketService
 
 
 async def _log_duties_action(
@@ -160,7 +160,7 @@ class DutyService:
         await self.duty_repo.save_undo(undo_id, undo_data)
         await self.session.commit()
 
-        await manager.broadcast({"type": "update_duties"})
+        await WebSocketService.broadcast_duties()
 
         admin_name = get_display_name(user)
         date_nice = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m.%Y")

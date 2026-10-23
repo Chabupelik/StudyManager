@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.dependencies import verify_internal_secret
-from app.websocket.manager import manager
+from app.services.websocket_service import WebSocketService
 
 router = APIRouter(tags=["internal"])
 
@@ -12,6 +12,6 @@ router = APIRouter(tags=["internal"])
     "/internal/broadcast_duties",
     dependencies=[Depends(verify_internal_secret)],
 )
-async def internal_broadcast_duties():
-    await manager.broadcast({"type": "update_duties"})
+async def internal_broadcast_duties() -> dict:
+    await WebSocketService.broadcast_duties()
     return {"status": "ok"}

@@ -54,7 +54,7 @@ RequireDeveloper = Annotated[AuthUser, Depends(require_developer)]
 class GroupRoleChecker:
     def __init__(self, allowed_roles: list[MemberRole | str]) -> None:
         self.allowed_roles: set[str] = {
-            r.value if isinstance(r, MemberRole) else str(r) for r in allowed_roles
+            r.value if isinstance(r, MemberRole) else r for r in allowed_roles
         }
 
     async def __call__(

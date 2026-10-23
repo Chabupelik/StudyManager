@@ -18,7 +18,7 @@ from app.services.schedule_service import (
     get_subject_at,
 )
 from app.services.user_service import AuthUser, get_display_name
-from app.websocket.manager import manager
+from app.services.websocket_service import WebSocketService
 
 
 def _parse_date(date: str) -> datetime:
@@ -149,15 +149,12 @@ class AttendanceService:
 
         await self.session.commit()
 
-        await manager.broadcast(
-            {
-                "type": "update_attendance",
-                "date": data.date,
-                "time": data.time,
-                "student_id": data.student_id,
-                "status": data.status,
-                "reason": data.reason,
-            }
+        await WebSocketService.broadcast_attendance(
+            date=data.date,
+            time=data.time,
+            student_id=data.student_id,
+            status=data.status,
+            reason=data.reason,
         )
 
         admin_name = get_display_name(user)
@@ -211,12 +208,9 @@ class AttendanceService:
 
         await self.session.commit()
 
-        await manager.broadcast(
-            {
-                "type": "update_day",
-                "date": data.date,
-                "student_id": data.student_id,
-            }
+        await WebSocketService.broadcast_day_attendance(
+            date=data.date,
+            student_id=data.student_id,
         )
 
         admin_name = get_display_name(user)

@@ -28,6 +28,57 @@ class WebSocketService:
         self.audit_repo = audit_repo
         self.settings = settings
 
+    @staticmethod
+    async def broadcast_attendance(
+        date: str,
+        time: str,
+        student_id: int,
+        status: int,
+        reason: str | None,
+    ) -> None:
+        await manager.broadcast(
+            {
+                "type": "update_attendance",
+                "date": date,
+                "time": time,
+                "student_id": student_id,
+                "status": status,
+                "reason": reason,
+            }
+        )
+
+    @staticmethod
+    async def broadcast_day_attendance(date: str, student_id: int) -> None:
+        await manager.broadcast(
+            {
+                "type": "update_day",
+                "date": date,
+                "student_id": student_id,
+            }
+        )
+
+    @staticmethod
+    async def broadcast_duties() -> None:
+        await manager.broadcast({"type": "update_duties"})
+
+    @staticmethod
+    async def broadcast_override(date: str) -> None:
+        await manager.broadcast({"type": "override", "date": date})
+
+    @staticmethod
+    async def broadcast_new_log(entry: dict) -> None:
+        await manager.broadcast({"type": "new_log", "entry": entry})
+
+    @staticmethod
+    async def broadcast_admin_status(user_id: int, last_seen: float) -> None:
+        await manager.broadcast(
+            {
+                "type": "admin_status",
+                "user_id": user_id,
+                "last_seen": last_seen,
+            }
+        )
+
     async def _log_and_broadcast(
         self,
         admin_name: str,
@@ -36,15 +87,12 @@ class WebSocketService:
     ) -> None:
         entry = await self.audit_repo.log_action(admin_name, action_type, details)
         await self.session.commit()
-        await manager.broadcast(
+        await self.broadcast_new_log(
             {
-                "type": "new_log",
-                "entry": {
-                    "admin_name": entry.admin_name,
-                    "action_type": entry.action_type,
-                    "details": entry.details,
-                    "created_at": entry.created_at,
-                },
+                "admin_name": entry.admin_name,
+                "action_type": entry.action_type,
+                "details": entry.details,
+                "created_at": entry.created_at,
             }
         )
 
