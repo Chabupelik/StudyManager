@@ -38,6 +38,26 @@ class GroupService:
         self.user_repo = user_repo
         self.redis = redis
 
+    def _check_can_view_group(self, group_id: int, user: AuthUser) -> None:
+        if user.is_superadmin:
+            return
+        role = (user.groups_roles or {}).get(str(group_id))
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: not a member of this group",
+            )
+
+    def _check_can_manage_members(self, group_id: int, user: AuthUser) -> None:
+        if user.is_superadmin:
+            return
+        role = (user.groups_roles or {}).get(str(group_id))
+        if role not in ("headman", "curator"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: insufficient permissions in this group",
+            )
+
     async def _invalidate_permissions(self, user: User | None) -> None:
         if not user:
             return
@@ -147,7 +167,11 @@ class GroupService:
         if current_user.is_superadmin:
             groups = await self.group_repo.get_all_ordered_by_name()
         else:
-            group_ids = [int(gid) for gid in current_user.groups_roles]
+            group_ids = [
+                int(gid)
+                for gid in (current_user.groups_roles or {})
+                if str(gid).isdigit()
+            ]
             if not group_ids:
                 return []
             groups = await self.group_repo.get_by_ids_ordered_by_name(group_ids)
@@ -162,7 +186,10 @@ class GroupService:
             for g in groups
         ]
 
-    async def list_members(self, group_id: int) -> list[MemberResponse]:
+    async def list_members(
+        self, group_id: int, current_user: AuthUser
+    ) -> list[MemberResponse]:
+        self._check_can_view_group(group_id, current_user)
         rows = await self.member_repo.get_members_with_users(group_id)
         return [
             MemberResponse(
@@ -176,7 +203,10 @@ class GroupService:
             for user, member in rows
         ]
 
-    async def add_member(self, group_id: int, body: AddMemberRequest) -> MemberResponse:
+    async def add_member(
+        self, group_id: int, body: AddMemberRequest, current_user: AuthUser
+    ) -> MemberResponse:
+        self._check_can_manage_members(group_id, current_user)
         if body.tg_user_id is None and body.vk_user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -227,8 +257,13 @@ class GroupService:
         )
 
     async def update_member(
-        self, group_id: int, user_id: int, body: UpdateMemberRequest
+        self,
+        group_id: int,
+        user_id: int,
+        body: UpdateMemberRequest,
+        current_user: AuthUser,
     ) -> MemberResponse:
+        self._check_can_manage_members(group_id, current_user)
         member = await self.member_repo.get_member(group_id, user_id)
         if not member:
             raise HTTPException(
@@ -266,11 +301,15 @@ class GroupService:
         old_tg_id = user.tg_user_id
         old_vk_id = user.vk_user_id
 
+        new_full_name = body.full_name if body.full_name is not None else user.full_name
+        new_tg_id = body.tg_user_id if body.tg_user_id is not None else user.tg_user_id
+        new_vk_id = body.vk_user_id if body.vk_user_id is not None else user.vk_user_id
+
         user = await self.user_repo.update(
             user=user,
-            full_name=body.full_name,
-            tg_user_id=body.tg_user_id,
-            vk_user_id=body.vk_user_id,
+            full_name=new_full_name,
+            tg_user_id=new_tg_id,
+            vk_user_id=new_vk_id,
         )
 
         role_str = (
@@ -303,7 +342,10 @@ class GroupService:
             is_duty_exempt=member.is_duty_exempt,
         )
 
-    async def remove_member(self, group_id: int, user_id: int) -> None:
+    async def remove_member(
+        self, group_id: int, user_id: int, current_user: AuthUser
+    ) -> None:
+        self._check_can_manage_members(group_id, current_user)
         user = await self.user_repo.get_by_id(user_id)
         deleted = await self.member_repo.remove_member(group_id, user_id)
         if not deleted:

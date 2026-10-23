@@ -89,7 +89,7 @@ async def list_members(
     user: CanViewMembers,
     service: GroupSrv,
 ) -> list[MemberResponse]:
-    return await service.list_members(group_id)
+    return await service.list_members(group_id, user)
 
 
 @router.post("/{group_id}/members", response_model=MemberResponse, status_code=201)
@@ -99,7 +99,7 @@ async def add_member(
     user: CanManageMembers,
     service: GroupSrv,
 ) -> MemberResponse:
-    return await service.add_member(group_id, body)
+    return await service.add_member(group_id, body, user)
 
 
 @router.put("/{group_id}/members/{user_id}", response_model=MemberResponse)
@@ -110,7 +110,7 @@ async def update_member(
     user: CanManageMembers,
     service: GroupSrv,
 ) -> MemberResponse:
-    return await service.update_member(group_id, user_id, body)
+    return await service.update_member(group_id, user_id, body, user)
 
 
 @router.delete(
@@ -125,5 +125,5 @@ async def remove_member(
     user: CanManageMembers,
     service: GroupSrv,
 ) -> Response:
-    await service.remove_member(group_id, user_id)
+    await service.remove_member(group_id, user_id, user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
