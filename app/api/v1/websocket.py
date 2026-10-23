@@ -5,8 +5,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.api.dependencies import get_client_ip
-from app.db.database import async_session_maker
-from app.services.websocket_service import create_websocket_service
+from app.services.websocket_service import WebSocketSrv
 from app.websocket.manager import manager
 
 logger = logging.getLogger("studymanager_api")
@@ -15,19 +14,20 @@ router = APIRouter(tags=["websocket"])
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    service: WebSocketSrv,
+):
     ip = get_client_ip(websocket)
     user_agent = websocket.headers.get("user-agent", "N/A")
 
     await manager.connect(websocket)
     try:
         auth_data = await websocket.receive_text()
-        async with async_session_maker() as session:
-            service = create_websocket_service(session)
-            auth_user = await service.authenticate(auth_data, ip, user_agent)
-            if not auth_user:
-                await websocket.close(code=4003)
-                return
+        auth_user = await service.authenticate(auth_data, ip, user_agent)
+        if not auth_user:
+            await websocket.close(code=4003)
+            return
 
         while True:
             await websocket.receive_text()
