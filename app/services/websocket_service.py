@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Annotated
 
@@ -16,6 +17,7 @@ from app.services.user_service import AuthUser, get_display_name
 from app.websocket.manager import manager
 
 logger = logging.getLogger("studymanager_api")
+_background_tasks: set[asyncio.Task] = set()
 
 
 class WebSocketService:
@@ -33,6 +35,12 @@ class WebSocketService:
 
     @classmethod
     async def _safe_broadcast(cls, message: dict) -> None:
+        task = asyncio.create_task(cls._do_broadcast(message))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    @classmethod
+    async def _do_broadcast(cls, message: dict) -> None:
         try:
             await manager.broadcast(message)
         except Exception as e:

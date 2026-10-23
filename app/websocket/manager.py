@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import WebSocket
@@ -20,15 +21,24 @@ class ConnectionManager:
             self._connections.remove(ws)
 
     async def broadcast(self, message: dict) -> None:
-        dead: list[WebSocket] = []
-        for ws in self._connections:
+        if not self._connections:
+            return
+
+        async def _send_one(ws: WebSocket) -> WebSocket | None:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_json(message), timeout=1.5)
+                return None
             except Exception as e:
                 logger.warning("Failed to send message to websocket client: %s", e)
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws)
+                return ws
+
+        results = await asyncio.gather(
+            *[_send_one(ws) for ws in list(self._connections)],
+            return_exceptions=True,
+        )
+        for res in results:
+            if isinstance(res, WebSocket):
+                self.disconnect(res)
 
 
 manager = ConnectionManager()
