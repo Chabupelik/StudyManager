@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class ScheduleCreateRequest(BaseModel):
-    day_of_week: int = Field(..., ge=1, le=6)
+    day_of_week: int = Field(..., ge=0, le=6)
 
 
 class LessonCreateRequest(BaseModel):

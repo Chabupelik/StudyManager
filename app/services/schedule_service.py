@@ -300,14 +300,14 @@ class ScheduleService:
         )
 
         sched_to_day = {s.id: s.day_of_week for s in schedules}
-        lessons_by_day: dict[int, list[Lesson]] = {d: [] for d in range(1, 8)}
+        lessons_by_day: dict[int, list[Lesson]] = {d: [] for d in range(0, 7)}
         for l in lessons:
             day = sched_to_day.get(l.schedule_id)
             if day in lessons_by_day:
                 lessons_by_day[day].append(l)
 
         res = []
-        for day in range(1, 8):
+        for day in range(0, 7):
             res.append(
                 {
                     "day_of_week": day,

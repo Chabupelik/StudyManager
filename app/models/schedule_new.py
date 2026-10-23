@@ -30,7 +30,7 @@ class Schedule(Base):
     day_of_week: Mapped[int] = mapped_column(
         SmallInteger,
         nullable=False,
-        comment="1=Monday … 6=Saturday",
+        comment="0=Monday … 6=Sunday",
     )
 
 

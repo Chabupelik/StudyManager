@@ -46,7 +46,7 @@ async def get_base_schedule(
 @router.post("/admin/base/{group_id}/{day_of_week}")
 async def create_base_lesson(
     group_id: int,
-    day_of_week: int = Path(..., ge=1, le=7),
+    day_of_week: int = Path(..., ge=0, le=6),
     body: BaseLessonCreateRequest = ...,
     current_user: CurrentUser = ...,
     service: ScheduleSrv = ...,

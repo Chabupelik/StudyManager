@@ -22,7 +22,7 @@ from app.schemas.groups_schedule import (
 from app.services.user_service import AuthUser
 
 MSK = ZoneInfo("Europe/Moscow")
-_DAY_NAMES = {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
+_DAY_NAMES = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
 
 
 def _lesson_to_response(lesson: Lesson) -> LessonResponse:
@@ -153,20 +153,20 @@ class GroupsScheduleService:
     ) -> TodayLessonResponse:
         self._check_can_view(group_id, current_user)
         today = datetime.now(MSK).date()
-        iso_dow = today.isoweekday()
-        if iso_dow == 7:
-            return TodayLessonResponse(schedule_id=0, day_of_week=7, lessons=[])
+        dow = today.weekday()
+        if dow == 6:
+            return TodayLessonResponse(schedule_id=0, day_of_week=6, lessons=[])
 
-        schedule = await self.schedule_repo.get_by_group_and_day(group_id, iso_dow)
+        schedule = await self.schedule_repo.get_by_group_and_day(group_id, dow)
         if schedule is None:
-            return TodayLessonResponse(schedule_id=0, day_of_week=iso_dow, lessons=[])
+            return TodayLessonResponse(schedule_id=0, day_of_week=dow, lessons=[])
 
         lessons = await self.schedule_repo.get_active_lessons_for_date(
             schedule.id, today
         )
         return TodayLessonResponse(
             schedule_id=schedule.id,
-            day_of_week=iso_dow,
+            day_of_week=dow,
             lessons=[_lesson_to_response(l) for l in lessons],
         )
 
