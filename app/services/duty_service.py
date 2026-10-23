@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -28,6 +29,16 @@ from app.services.user_service import AuthUser, get_display_name
 from app.services.websocket_service import WebSocketService
 
 logger = logging.getLogger("studymanager_api")
+
+
+def _parse_date(date: str) -> datetime:
+    try:
+        return datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid date format: {date!r}. Expected YYYY-MM-DD.",
+        )
 
 
 class DutyService:
@@ -141,6 +152,7 @@ class DutyService:
         user: AuthUser,
         background_tasks: BackgroundTasks,
     ) -> dict:
+        dt = _parse_date(data.date)
         self._check_group_access(data.group_id, user)
 
         current_duties = await self.duty_repo.get_duties_map(data.group_id)
@@ -206,17 +218,23 @@ class DutyService:
         except Exception as e:
             logger.warning("Failed to broadcast duty events: %s", e)
 
-        date_nice = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m.%Y")
+        date_nice = dt.strftime("%d.%m.%Y")
         tg_text = (
             f"🔔 <b>Назначены дежурные (через сайт)!</b>\n"
             f"📅 Дата: <code>{date_nice}</code>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
         )
         for name in assigned_names:
-            tg_text += f"✅ <b>{name}</b>\n"
-        tg_text += (
-            f'\n👤 <b>Назначил:</b> <a href="tg://user?id={user.id}">{admin_name}</a>'
-        )
+            tg_text += f"✅ <b>{html.escape(name)}</b>\n"
+
+        if user.platform == "telegram":
+            author_str = (
+                f'<a href="tg://user?id={user.id}">{html.escape(admin_name)}</a>'
+            )
+        else:
+            author_str = f"<b>{html.escape(admin_name)}</b>"
+
+        tg_text += f"\n👤 <b>Назначил:</b> {author_str}"
 
         keyboard = {
             "inline_keyboard": [
