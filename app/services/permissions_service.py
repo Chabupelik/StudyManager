@@ -115,8 +115,13 @@ async def get_user_permissions(
             cached = await redis.get(key)
             if cached is not None:
                 return json.loads(cached)
-        except Exception:
-            pass
+        except Exception as fallback_err:
+            logger.warning(
+                "Redis fallback get failed for %s:%s: %s",
+                platform,
+                identifier,
+                fallback_err,
+            )
         return await _fetch_permissions_from_db(identifier, session, platform)
 
 
