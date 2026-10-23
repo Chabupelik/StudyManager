@@ -3,6 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.core.config import get_settings
+from app.models.group_member import MemberRole
+
+_ADMIN_ROLES = frozenset(
+    {
+        MemberRole.headman.value,
+        MemberRole.deputy.value,
+        MemberRole.curator.value,
+    }
+)
 
 
 @dataclass(slots=True)
@@ -17,7 +26,8 @@ class AuthUser:
 
     @property
     def is_developer(self) -> bool:
-        return self.id == get_settings().developer_id
+        settings = get_settings()
+        return self.platform == "telegram" and self.id == settings.developer_id
 
     @property
     def display_name(self) -> str:
@@ -27,15 +37,8 @@ class AuthUser:
         if self.is_superadmin:
             return True
         if group_id is not None:
-            return self.groups_roles.get(str(group_id)) in (
-                "headman",
-                "deputy",
-                "curator",
-            )
-        return any(
-            role in ("headman", "deputy", "curator")
-            for role in self.groups_roles.values()
-        )
+            return self.groups_roles.get(str(group_id)) in _ADMIN_ROLES
+        return any(role in _ADMIN_ROLES for role in self.groups_roles.values())
 
     def has_group_role(
         self, group_id: int | str, allowed_roles: set[str] | list[str]
