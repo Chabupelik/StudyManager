@@ -3,15 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import BackgroundTasks, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import DbSession, async_session_maker
+from app.core.config import get_settings
+from app.db.database import DbSession
+from app.models.audit import ActionLog
 from app.repositories.attendance_repo import AttendanceRepository
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.override_repo import OverrideRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.attendance import AttendanceUpdateRequest, LessonDetailsResponse
-from app.services.audit_service import log_action
 from app.services.schedule_service import (
     compute_active_times,
     get_base_times_for_date,
@@ -31,11 +33,12 @@ def _parse_date(date: str) -> datetime:
         )
 
 
-async def _log_attendance_action(
-    admin_name: str, action_type: str, details: str, user_id: int
-) -> None:
-    async with async_session_maker() as session:
-        await log_action(session, admin_name, action_type, details, user_id=user_id)
+def _format_status(status_code: int) -> str:
+    if status_code == 1:
+        return "Н"
+    if status_code == 2:
+        return "У"
+    return "Присутствует"
 
 
 class AttendanceService:
@@ -45,11 +48,36 @@ class AttendanceService:
         att_repo: AttendanceRepository,
         ovr_repo: OverrideRepository,
         user_repo: UserRepository,
+        audit_repo: AuditRepository,
     ) -> None:
         self.session = session
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
         self.user_repo = user_repo
+        self.audit_repo = audit_repo
+
+    def _check_group_access(self, group_id: int, user: AuthUser) -> None:
+        if not user.is_superadmin and str(group_id) not in (user.groups_roles or {}):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: No access to this group",
+            )
+
+    async def _get_lesson_name(self, group_id: int, date: str, time: str) -> str:
+        overrides = await self.ovr_repo.get_for_date(group_id, date)
+        ovr_map = {o.time: o for o in overrides}
+        if time in ovr_map and ovr_map[time].new_name:
+            return ovr_map[time].new_name
+        weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
+        name, _ = await get_subject_at(self.session, group_id, date, time, weekday, {})
+        return name or "Пара"
+
+    async def _log_action(
+        self, admin_name: str, action_type: str, details: str, user_id: int
+    ) -> ActionLog | None:
+        if user_id == get_settings().developer_id:
+            return None
+        return await self.audit_repo.log_action(admin_name, action_type, details)
 
     async def get_lesson_details(
         self,
@@ -59,12 +87,7 @@ class AttendanceService:
         user: AuthUser,
     ) -> LessonDetailsResponse:
         _parse_date(date)
-
-        if not user.is_superadmin and str(group_id) not in (user.groups_roles or {}):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: No access to this group",
-            )
+        self._check_group_access(group_id, user)
 
         current_att = {
             r.user_id: r
@@ -114,19 +137,12 @@ class AttendanceService:
         self,
         data: AttendanceUpdateRequest,
         user: AuthUser,
-        background_tasks: BackgroundTasks,
     ) -> dict:
         _parse_date(data.date)
-
-        group_id = data.group_id
-        if not user.is_superadmin and str(group_id) not in (user.groups_roles or {}):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden",
-            )
+        self._check_group_access(data.group_id, user)
 
         await self.att_repo.upsert(
-            group_id=group_id,
+            group_id=data.group_id,
             date=data.date,
             time=data.time,
             user_id=data.student_id,
@@ -134,19 +150,19 @@ class AttendanceService:
             reason=data.reason or "",
         )
 
-        lesson_name = "Пара"
-        overrides = await self.ovr_repo.get_for_date(group_id, data.date)
-        ovr_map = {o.time: o for o in overrides}
-        if data.time in ovr_map and ovr_map[data.time].new_name:
-            lesson_name = ovr_map[data.time].new_name
-        else:
-            weekday = datetime.strptime(data.date, "%Y-%m-%d").weekday()
-            name, _ = await get_subject_at(
-                self.session, group_id, data.date, data.time, weekday, {}
-            )
-            if name:
-                lesson_name = name
+        lesson_name = await self._get_lesson_name(data.group_id, data.date, data.time)
+        admin_name = get_display_name(user)
+        stat_str = _format_status(data.status)
+        user_obj = await self.user_repo.get_by_id(data.student_id)
+        student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
+        fmt_date = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m")
+        log_details = (
+            f"{fmt_date} | {data.time} | {lesson_name}\n{student_name} ➔ {stat_str}"
+        )
 
+        log_entry = await self._log_action(
+            admin_name, "Изменение отметки", log_details, user.id
+        )
         await self.session.commit()
 
         await WebSocketService.broadcast_attendance(
@@ -156,76 +172,69 @@ class AttendanceService:
             status=data.status,
             reason=data.reason,
         )
-
-        admin_name = get_display_name(user)
-        stat_str = (
-            "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
-        )
-        user_obj = await self.user_repo.get_by_id(data.student_id)
-        student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
-        fmt_date = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m")
-        log_details = (
-            f"{fmt_date} | {data.time} | {lesson_name}\n{student_name} ➔ {stat_str}"
-        )
-
-        background_tasks.add_task(
-            _log_attendance_action,
-            admin_name,
-            "Изменение отметки",
-            log_details,
-            user.id,
-        )
+        if log_entry:
+            await WebSocketService.broadcast_new_log(
+                {
+                    "admin_name": log_entry.admin_name,
+                    "action_type": log_entry.action_type,
+                    "details": log_entry.details,
+                    "created_at": log_entry.created_at,
+                }
+            )
         return {"status": "ok"}
 
     async def update_attendance_day(
         self,
         data: AttendanceUpdateRequest,
         user: AuthUser,
-        background_tasks: BackgroundTasks,
     ) -> dict:
         _parse_date(data.date)
+        self._check_group_access(data.group_id, user)
 
-        group_id = data.group_id
-        if not user.is_superadmin and str(group_id) not in (user.groups_roles or {}):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden",
-            )
-
-        overrides = await self.ovr_repo.get_for_date(group_id, data.date)
-        base_times = await get_base_times_for_date(self.session, group_id, data.date)
+        overrides = await self.ovr_repo.get_for_date(data.group_id, data.date)
+        base_times = await get_base_times_for_date(
+            self.session, data.group_id, data.date
+        )
         active_times = compute_active_times(base_times, overrides)
 
-        for t in active_times:
-            await self.att_repo.upsert(
-                group_id=group_id,
-                date=data.date,
-                time=t,
-                user_id=data.student_id,
-                status=data.status,
-                reason=data.reason or "",
-            )
+        records = [
+            {
+                "group_id": data.group_id,
+                "date": data.date,
+                "time": t,
+                "user_id": data.student_id,
+                "status": data.status,
+                "reason": data.reason or "",
+            }
+            for t in active_times
+        ]
+        await self.att_repo.upsert_many(records)
 
+        admin_name = get_display_name(user)
+        user_obj = await self.user_repo.get_by_id(data.student_id)
+        student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
+        stat_str = _format_status(data.status)
+        log_entry = await self._log_action(
+            admin_name,
+            "Отметка на весь день",
+            f"Студент {student_name} ({data.date}) → {stat_str}",
+            user.id,
+        )
         await self.session.commit()
 
         await WebSocketService.broadcast_day_attendance(
             date=data.date,
             student_id=data.student_id,
         )
-
-        admin_name = get_display_name(user)
-        user_obj = await self.user_repo.get_by_id(data.student_id)
-        student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
-        stat_str = (
-            "Н" if data.status == 1 else "У" if data.status == 2 else "Присутствует"
-        )
-        background_tasks.add_task(
-            _log_attendance_action,
-            admin_name,
-            "Отметка на весь день",
-            f"Студент {student_name} ({data.date}) → {stat_str}",
-            user.id,
-        )
+        if log_entry:
+            await WebSocketService.broadcast_new_log(
+                {
+                    "admin_name": log_entry.admin_name,
+                    "action_type": log_entry.action_type,
+                    "details": log_entry.details,
+                    "created_at": log_entry.created_at,
+                }
+            )
         return {"status": "ok"}
 
 
@@ -235,6 +244,7 @@ def get_attendance_service(db: DbSession) -> AttendanceService:
         att_repo=AttendanceRepository(db),
         ovr_repo=OverrideRepository(db),
         user_repo=UserRepository(db),
+        audit_repo=AuditRepository(db),
     )
 
 

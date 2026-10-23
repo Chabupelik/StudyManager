@@ -32,6 +32,16 @@ class AttendanceRepository(BaseRepository):
         )
         await self.session.execute(stmt)
 
+    async def upsert_many(self, records: list[dict]) -> None:
+        if not records:
+            return
+        stmt = pg_insert(Attendance).values(records)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_attendance",
+            set_={"status": stmt.excluded.status, "reason": stmt.excluded.reason},
+        )
+        await self.session.execute(stmt)
+
     async def get_for_lesson(
         self, group_id: int, date: str, time: str
     ) -> list[Attendance]:

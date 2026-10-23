@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter
 
 from app.api.dependencies import CurrentUser
 from app.schemas.attendance import AttendanceUpdateRequest, LessonDetailsResponse
@@ -23,18 +23,16 @@ async def get_lesson_details(
 @router.post("/attendance")
 async def update_attendance(
     data: AttendanceUpdateRequest,
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     service: AttendanceSrv,
 ) -> dict:
-    return await service.update_attendance(data, current_user, background_tasks)
+    return await service.update_attendance(data, current_user)
 
 
 @router.post("/attendance/day")
 async def update_attendance_day(
     data: AttendanceUpdateRequest,
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     service: AttendanceSrv,
 ) -> dict:
-    return await service.update_attendance_day(data, current_user, background_tasks)
+    return await service.update_attendance_day(data, current_user)
