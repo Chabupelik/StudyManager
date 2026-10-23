@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import Depends
@@ -13,6 +14,8 @@ from app.repositories.audit_repo import AuditRepository
 from app.repositories.user_repo import UserRepository
 from app.services.user_service import AuthUser, get_display_name
 from app.websocket.manager import manager
+
+logger = logging.getLogger("studymanager_api")
 
 
 class WebSocketService:
@@ -28,15 +31,23 @@ class WebSocketService:
         self.audit_repo = audit_repo
         self.settings = settings
 
-    @staticmethod
+    @classmethod
+    async def _safe_broadcast(cls, message: dict) -> None:
+        try:
+            await manager.broadcast(message)
+        except Exception as e:
+            logger.warning("Failed to broadcast websocket event: %s", e)
+
+    @classmethod
     async def broadcast_attendance(
+        cls,
         date: str,
         time: str,
         student_id: int,
         status: int,
         reason: str | None,
     ) -> None:
-        await manager.broadcast(
+        await cls._safe_broadcast(
             {
                 "type": "update_attendance",
                 "date": date,
@@ -47,9 +58,9 @@ class WebSocketService:
             }
         )
 
-    @staticmethod
-    async def broadcast_day_attendance(date: str, student_id: int) -> None:
-        await manager.broadcast(
+    @classmethod
+    async def broadcast_day_attendance(cls, date: str, student_id: int) -> None:
+        await cls._safe_broadcast(
             {
                 "type": "update_day",
                 "date": date,
@@ -57,21 +68,21 @@ class WebSocketService:
             }
         )
 
-    @staticmethod
-    async def broadcast_duties() -> None:
-        await manager.broadcast({"type": "update_duties"})
+    @classmethod
+    async def broadcast_duties(cls) -> None:
+        await cls._safe_broadcast({"type": "update_duties"})
 
-    @staticmethod
-    async def broadcast_override(date: str) -> None:
-        await manager.broadcast({"type": "override", "date": date})
+    @classmethod
+    async def broadcast_override(cls, date: str) -> None:
+        await cls._safe_broadcast({"type": "override", "date": date})
 
-    @staticmethod
-    async def broadcast_new_log(entry: dict) -> None:
-        await manager.broadcast({"type": "new_log", "entry": entry})
+    @classmethod
+    async def broadcast_new_log(cls, entry: dict) -> None:
+        await cls._safe_broadcast({"type": "new_log", "entry": entry})
 
-    @staticmethod
-    async def broadcast_admin_status(user_id: int, last_seen: float) -> None:
-        await manager.broadcast(
+    @classmethod
+    async def broadcast_admin_status(cls, user_id: int, last_seen: float) -> None:
+        await cls._safe_broadcast(
             {
                 "type": "admin_status",
                 "user_id": user_id,
@@ -87,12 +98,18 @@ class WebSocketService:
     ) -> None:
         entry = await self.audit_repo.log_action(admin_name, action_type, details)
         await self.session.commit()
+        created_at_val = (
+            float(entry.created_at.timestamp())
+            if hasattr(entry.created_at, "timestamp")
+            else float(entry.created_at)
+        )
         await self.broadcast_new_log(
             {
+                "id": entry.id,
                 "admin_name": entry.admin_name,
                 "action_type": entry.action_type,
                 "details": entry.details,
-                "created_at": entry.created_at,
+                "created_at": created_at_val,
             }
         )
 

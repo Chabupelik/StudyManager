@@ -35,12 +35,18 @@ class AuditService:
         entry = await self.repo.log_action(admin_name, action_type, details)
         await self.session.commit()
 
+        created_at_val = (
+            float(entry.created_at.timestamp())
+            if hasattr(entry.created_at, "timestamp")
+            else float(entry.created_at)
+        )
         await WebSocketService.broadcast_new_log(
             {
+                "id": entry.id,
                 "admin_name": entry.admin_name,
                 "action_type": entry.action_type,
                 "details": entry.details,
-                "created_at": entry.created_at,
+                "created_at": created_at_val,
             }
         )
 

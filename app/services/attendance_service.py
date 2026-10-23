@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -21,6 +22,8 @@ from app.services.schedule_service import (
 )
 from app.services.user_service import AuthUser, get_display_name
 from app.services.websocket_service import WebSocketService
+
+logger = logging.getLogger("studymanager_api")
 
 
 def _parse_date(date: str) -> datetime:
@@ -63,12 +66,13 @@ class AttendanceService:
                 detail="Forbidden: No access to this group",
             )
 
-    async def _get_lesson_name(self, group_id: int, date: str, time: str) -> str:
+    async def _get_lesson_name(
+        self, group_id: int, date: str, time: str, weekday: int
+    ) -> str:
         overrides = await self.ovr_repo.get_for_date(group_id, date)
         ovr_map = {o.time: o for o in overrides}
         if time in ovr_map and ovr_map[time].new_name:
             return ovr_map[time].new_name
-        weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
         name, _ = await get_subject_at(self.session, group_id, date, time, weekday, {})
         return name or "Пара"
 
@@ -138,7 +142,7 @@ class AttendanceService:
         data: AttendanceUpdateRequest,
         user: AuthUser,
     ) -> dict:
-        _parse_date(data.date)
+        dt = _parse_date(data.date)
         self._check_group_access(data.group_id, user)
 
         await self.att_repo.upsert(
@@ -150,12 +154,14 @@ class AttendanceService:
             reason=data.reason or "",
         )
 
-        lesson_name = await self._get_lesson_name(data.group_id, data.date, data.time)
+        lesson_name = await self._get_lesson_name(
+            data.group_id, data.date, data.time, dt.weekday()
+        )
         admin_name = get_display_name(user)
         stat_str = _format_status(data.status)
         user_obj = await self.user_repo.get_by_id(data.student_id)
         student_name = user_obj.full_name if user_obj else f"Студент {data.student_id}"
-        fmt_date = datetime.strptime(data.date, "%Y-%m-%d").strftime("%d.%m")
+        fmt_date = dt.strftime("%d.%m")
         log_details = (
             f"{fmt_date} | {data.time} | {lesson_name}\n{student_name} ➔ {stat_str}"
         )
@@ -165,22 +171,32 @@ class AttendanceService:
         )
         await self.session.commit()
 
-        await WebSocketService.broadcast_attendance(
-            date=data.date,
-            time=data.time,
-            student_id=data.student_id,
-            status=data.status,
-            reason=data.reason,
-        )
-        if log_entry:
-            await WebSocketService.broadcast_new_log(
-                {
-                    "admin_name": log_entry.admin_name,
-                    "action_type": log_entry.action_type,
-                    "details": log_entry.details,
-                    "created_at": log_entry.created_at,
-                }
+        try:
+            await WebSocketService.broadcast_attendance(
+                date=data.date,
+                time=data.time,
+                student_id=data.student_id,
+                status=data.status,
+                reason=data.reason,
             )
+            if log_entry:
+                created_at_val = (
+                    float(log_entry.created_at.timestamp())
+                    if hasattr(log_entry.created_at, "timestamp")
+                    else float(log_entry.created_at)
+                )
+                await WebSocketService.broadcast_new_log(
+                    {
+                        "id": log_entry.id,
+                        "admin_name": log_entry.admin_name,
+                        "action_type": log_entry.action_type,
+                        "details": log_entry.details,
+                        "created_at": created_at_val,
+                    }
+                )
+        except Exception as e:
+            logger.warning("Failed to broadcast attendance update: %s", e)
+
         return {"status": "ok"}
 
     async def update_attendance_day(
@@ -196,6 +212,9 @@ class AttendanceService:
             self.session, data.group_id, data.date
         )
         active_times = compute_active_times(base_times, overrides)
+
+        if not active_times:
+            return {"status": "ok", "message": "На этот день нет занятий"}
 
         records = [
             {
@@ -222,19 +241,29 @@ class AttendanceService:
         )
         await self.session.commit()
 
-        await WebSocketService.broadcast_day_attendance(
-            date=data.date,
-            student_id=data.student_id,
-        )
-        if log_entry:
-            await WebSocketService.broadcast_new_log(
-                {
-                    "admin_name": log_entry.admin_name,
-                    "action_type": log_entry.action_type,
-                    "details": log_entry.details,
-                    "created_at": log_entry.created_at,
-                }
+        try:
+            await WebSocketService.broadcast_day_attendance(
+                date=data.date,
+                student_id=data.student_id,
             )
+            if log_entry:
+                created_at_val = (
+                    float(log_entry.created_at.timestamp())
+                    if hasattr(log_entry.created_at, "timestamp")
+                    else float(log_entry.created_at)
+                )
+                await WebSocketService.broadcast_new_log(
+                    {
+                        "id": log_entry.id,
+                        "admin_name": log_entry.admin_name,
+                        "action_type": log_entry.action_type,
+                        "details": log_entry.details,
+                        "created_at": created_at_val,
+                    }
+                )
+        except Exception as e:
+            logger.warning("Failed to broadcast day attendance update: %s", e)
+
         return {"status": "ok"}
 
 
