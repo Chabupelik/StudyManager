@@ -310,6 +310,7 @@ class ScheduleService:
         for day in range(0, 7):
             res.append(
                 {
+                    "group_id": group_id,
                     "day_of_week": day,
                     "lessons": [
                         {

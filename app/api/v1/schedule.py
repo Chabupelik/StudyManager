@@ -6,6 +6,7 @@ from app.api.dependencies import CurrentUser
 from app.schemas.schedule import (
     BaseLessonCreateRequest,
     BaseLessonUpdateRequest,
+    BaseScheduleResponse,
     OverrideUpdateRequest,
     ScheduleResponse,
 )
@@ -34,12 +35,12 @@ async def update_override(
     return await service.update_override(data, current_user, background_tasks)
 
 
-@router.get("/admin/base", response_model=list[dict])
+@router.get("/admin/base", response_model=list[BaseScheduleResponse])
 async def get_base_schedule(
     group_id: int,
     current_user: CurrentUser,
     service: ScheduleSrv,
-) -> list[dict]:
+) -> list[BaseScheduleResponse]:
     return await service.get_base_schedule(group_id, current_user)
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class LessonResponse(BaseModel):
@@ -60,9 +60,9 @@ class BaseLessonItem(BaseModel):
 
 
 class BaseScheduleResponse(BaseModel):
-    group_id: int
     day_of_week: int
     lessons: list[BaseLessonItem]
+    group_id: int | None = None
 
 
 class BaseLessonCreateRequest(BaseModel):
@@ -94,6 +94,23 @@ class BaseLessonCreateRequest(BaseModel):
         except ValueError:
             raise ValueError("Date must be in YYYY-MM-DD format")
         return v
+
+    @model_validator(mode="after")
+    def validate_times(self) -> BaseLessonCreateRequest:
+        try:
+            t_start = datetime.strptime(self.start_time, "%H:%M").time()
+            t_end = datetime.strptime(self.end_time, "%H:%M").time()
+            if t_end <= t_start:
+                raise ValueError("end_time must be after start_time")
+        except ValueError as e:
+            if "end_time must be after start_time" in str(e):
+                raise
+        if self.valid_from and self.valid_until:
+            d_from = datetime.strptime(self.valid_from, "%Y-%m-%d").date()
+            d_until = datetime.strptime(self.valid_until, "%Y-%m-%d").date()
+            if d_until < d_from:
+                raise ValueError("valid_until must be >= valid_from")
+        return self
 
 
 class BaseLessonUpdateRequest(BaseModel):
@@ -127,3 +144,17 @@ class BaseLessonUpdateRequest(BaseModel):
         except ValueError:
             raise ValueError("Date must be in YYYY-MM-DD format")
         return v
+
+    @model_validator(mode="after")
+    def validate_times(self) -> BaseLessonUpdateRequest:
+        if self.start_time and self.end_time:
+            t_start = datetime.strptime(self.start_time, "%H:%M").time()
+            t_end = datetime.strptime(self.end_time, "%H:%M").time()
+            if t_end <= t_start:
+                raise ValueError("end_time must be after start_time")
+        if self.valid_from and self.valid_until:
+            d_from = datetime.strptime(self.valid_from, "%Y-%m-%d").date()
+            d_until = datetime.strptime(self.valid_until, "%Y-%m-%d").date()
+            if d_until < d_from:
+                raise ValueError("valid_until must be >= valid_from")
+        return self
