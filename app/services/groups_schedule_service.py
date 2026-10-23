@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 from typing import Annotated
 
+import pytz
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
+from app.models.group_member import MemberRole
 from app.models.schedule_new import Lesson
 from app.repositories.group_repo import GroupRepository
 from app.repositories.schedule_repo import ScheduleRepository
@@ -19,6 +21,7 @@ from app.schemas.groups_schedule import (
 )
 from app.services.user_service import AuthUser
 
+MSK = pytz.timezone("Europe/Moscow")
 _DAY_NAMES = {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
 
 
@@ -61,7 +64,7 @@ class GroupsScheduleService:
         if user.is_superadmin:
             return
         role = (user.groups_roles or {}).get(str(group_id))
-        if role not in ("headman", "curator"):
+        if role not in (MemberRole.headman.value, MemberRole.curator.value):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: insufficient permissions in this group",
@@ -112,6 +115,17 @@ class GroupsScheduleService:
         current_user: AuthUser,
     ) -> LessonResponse:
         self._check_can_manage(group_id, current_user)
+        if body.end_time <= body.start_time:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="end_time must be after start_time",
+            )
+        if body.valid_from and body.valid_until and body.valid_until < body.valid_from:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="valid_until must be >= valid_from",
+            )
+
         schedule = await self.schedule_repo.get_by_id(schedule_id)
         if schedule is None or schedule.group_id != group_id:
             raise HTTPException(
@@ -138,7 +152,7 @@ class GroupsScheduleService:
         self, group_id: int, current_user: AuthUser
     ) -> TodayLessonResponse:
         self._check_can_view(group_id, current_user)
-        today = date.today()
+        today = datetime.now(MSK).date()
         iso_dow = today.isoweekday()
         if iso_dow == 7:
             return TodayLessonResponse(schedule_id=0, day_of_week=7, lessons=[])
@@ -178,7 +192,10 @@ class GroupsScheduleService:
                 day_of_week=sched.day_of_week,
                 lessons=[
                     _lesson_to_response(l)
-                    for l in lessons_by_schedule.get(sched.id, [])
+                    for l in sorted(
+                        lessons_by_schedule.get(sched.id, []),
+                        key=lambda x: (x.lesson_number, x.start_time),
+                    )
                 ],
             )
             for sched in schedules
