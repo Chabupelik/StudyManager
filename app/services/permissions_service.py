@@ -77,9 +77,14 @@ async def get_user_permissions(
 ) -> dict:
     key = _perm_key(identifier, platform)
 
-    cached = await redis.get(key)
-    if cached is not None:
-        return json.loads(cached)
+    try:
+        cached = await redis.get(key)
+        if cached is not None:
+            return json.loads(cached)
+    except Exception as e:
+        logger.warning(
+            "Redis initial get failed for %s:%s: %s", platform, identifier, e
+        )
 
     lock_key = _lock_key(identifier, platform)
     try:
@@ -92,12 +97,26 @@ async def get_user_permissions(
                 identifier, session, platform
             )
             ttl = _PERM_TTL_BASE + random.randint(-_PERM_TTL_JITTER, _PERM_TTL_JITTER)
-            await redis.set(key, json.dumps(permissions), ex=ttl)
+            try:
+                await redis.set(key, json.dumps(permissions), ex=ttl)
+            except Exception as e:
+                logger.warning(
+                    "Redis set failed for %s:%s: %s", platform, identifier, e
+                )
             return permissions
-    except Exception:
-        cached = await redis.get(key)
-        if cached is not None:
-            return json.loads(cached)
+    except Exception as e:
+        logger.warning(
+            "Redis permissions lock/fetch failed for %s:%s: %s",
+            platform,
+            identifier,
+            e,
+        )
+        try:
+            cached = await redis.get(key)
+            if cached is not None:
+                return json.loads(cached)
+        except Exception:
+            pass
         return await _fetch_permissions_from_db(identifier, session, platform)
 
 
@@ -106,6 +125,14 @@ async def invalidate_user_permissions(
     redis: aioredis.Redis,
     platform: str = "telegram",
 ) -> None:
-    await redis.delete(_perm_key(identifier, platform))
-    if platform == "telegram":
-        await redis.delete(f"user_perm:{identifier}")
+    try:
+        await redis.delete(_perm_key(identifier, platform))
+        if platform == "telegram":
+            await redis.delete(f"user_perm:{identifier}")
+    except Exception as e:
+        logger.warning(
+            "Redis invalidate_user_permissions failed for %s:%s: %s",
+            platform,
+            identifier,
+            e,
+        )
