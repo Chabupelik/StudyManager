@@ -88,8 +88,14 @@ async def get_user_permissions(
 
     lock_key = _lock_key(identifier, platform)
     try:
-        async with redis.lock(lock_key, timeout=3, blocking_timeout=0.3):
+        async with redis.lock(
+            lock_key,
+            timeout=10,
+            blocking_timeout=3.0,
+            raise_on_release_error=False,
+        ):
             cached = await redis.get(key)
+
             if cached is not None:
                 return json.loads(cached)
 
