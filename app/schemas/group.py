@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+from app.models.group_member import MemberRole
+
+
+class GroupCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    tg_chat_id: int | None = None
+    vk_peer_id: int | None = None
+
+
+class GroupUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=50)
+    tg_chat_id: int | None = None
+    vk_peer_id: int | None = None
+
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+    tg_chat_id: int | None
+    vk_peer_id: int | None
+
+
+class AddMemberRequest(BaseModel):
+    tg_user_id: int | None = None
+    vk_user_id: int | None = None
+    full_name: str = Field(..., min_length=1, max_length=255)
+    role: MemberRole = MemberRole.student
+
+
+class UpdateMemberRequest(BaseModel):
+    full_name: str | None = Field(None, min_length=1, max_length=255)
+    tg_user_id: int | None = None
+    vk_user_id: int | None = None
+    role: MemberRole | None = None
+
+
+class MemberResponse(BaseModel):
+    user_id: int
+    full_name: str
+    tg_user_id: int | None
+    vk_user_id: int | None
+    role: str

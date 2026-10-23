@@ -22,6 +22,17 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_tg_id_excluding(
+        self, tg_user_id: int, exclude_user_id: int
+    ) -> User | None:
+        result = await self.session.execute(
+            select(User).where(
+                User.tg_user_id == tg_user_id,
+                User.id != exclude_user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_group_students(self, group_id: int) -> list[User]:
         stmt = (
             select(User)
