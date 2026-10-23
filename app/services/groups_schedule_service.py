@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
-import pytz
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ from app.schemas.groups_schedule import (
 )
 from app.services.user_service import AuthUser
 
-MSK = pytz.timezone("Europe/Moscow")
+MSK = ZoneInfo("Europe/Moscow")
 _DAY_NAMES = {1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
 
 

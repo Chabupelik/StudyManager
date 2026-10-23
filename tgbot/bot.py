@@ -217,7 +217,7 @@ async def generate_excel_report(year: str, month: str, group_id: int):
     grey_days = set()
     for d in range(1, last_day + 1):
         date_str = f"{y}-{m:02d}-{d:02d}"
-        wday = datetime(y, m, d).weekday()
+        wday = datetime(y, m, d).isoweekday()
 
         lesson_rows = await pool.fetch(
             "SELECT start_time FROM lessons l JOIN schedules s ON l.schedule_id = s.id "

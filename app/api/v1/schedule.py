@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Path
 
 from app.api.dependencies import CurrentUser
-from app.schemas.schedule import OverrideUpdateRequest, ScheduleResponse
+from app.schemas.schedule import (
+    BaseLessonCreateRequest,
+    BaseLessonUpdateRequest,
+    OverrideUpdateRequest,
+    ScheduleResponse,
+)
 from app.services.schedule_service import ScheduleSrv
 
 router = APIRouter(tags=["schedule"])
@@ -41,22 +46,22 @@ async def get_base_schedule(
 @router.post("/admin/base/{group_id}/{day_of_week}")
 async def create_base_lesson(
     group_id: int,
-    day_of_week: int,
-    data: dict,
-    current_user: CurrentUser,
-    service: ScheduleSrv,
+    day_of_week: int = Path(..., ge=1, le=7),
+    body: BaseLessonCreateRequest = ...,
+    current_user: CurrentUser = ...,
+    service: ScheduleSrv = ...,
 ) -> dict:
-    return await service.create_base_lesson(group_id, day_of_week, data, current_user)
+    return await service.create_base_lesson(group_id, day_of_week, body, current_user)
 
 
 @router.put("/admin/base/lesson/{lesson_id}")
 async def update_base_lesson(
     lesson_id: int,
-    data: dict,
+    body: BaseLessonUpdateRequest,
     current_user: CurrentUser,
     service: ScheduleSrv,
 ) -> dict:
-    return await service.update_base_lesson(lesson_id, data, current_user)
+    return await service.update_base_lesson(lesson_id, body, current_user)
 
 
 @router.delete("/admin/base/lesson/{lesson_id}")

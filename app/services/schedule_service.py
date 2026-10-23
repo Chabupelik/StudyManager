@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
-import pytz
 from fastapi import BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,12 +13,17 @@ from app.models.schedule_new import Lesson
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.override_repo import OverrideRepository
 from app.repositories.schedule_repo import ScheduleRepository
-from app.schemas.schedule import OverrideUpdateRequest, ScheduleResponse
+from app.schemas.schedule import (
+    BaseLessonCreateRequest,
+    BaseLessonUpdateRequest,
+    OverrideUpdateRequest,
+    ScheduleResponse,
+)
 from app.services.audit_service import log_action
 from app.services.user_service import AuthUser, get_display_name
 from app.services.websocket_service import WebSocketService
 
-MSK = pytz.timezone("Europe/Moscow")
+MSK = ZoneInfo("Europe/Moscow")
 LESSON_DURATION_MINUTES = 90
 
 
@@ -181,6 +186,18 @@ class ScheduleService:
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
 
+    def _check_can_view(self, group_id: int, user: AuthUser) -> None:
+        if not user.is_superadmin and str(group_id) not in user.groups_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
+            )
+
+    def _check_can_manage(self, group_id: int, user: AuthUser) -> None:
+        if not user.is_admin(group_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
+            )
+
     async def get_schedule(
         self,
         date: str,
@@ -205,13 +222,7 @@ class ScheduleService:
             )
         )
 
-        if (
-            not current_user.is_superadmin
-            and str(target_group_id) not in current_user.groups_roles
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+        self._check_can_view(target_group_id, current_user)
 
         overrides = await self.ovr_repo.get_for_date(target_group_id, date)
         absent_counts = await self.att_repo.get_absent_count_by_time(
@@ -249,24 +260,7 @@ class ScheduleService:
             )
         )
 
-        if (
-            not current_user.is_superadmin
-            and str(target_group_id) not in current_user.groups_roles
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
-
-        if not current_user.is_superadmin and current_user.groups_roles.get(
-            str(target_group_id)
-        ) not in [
-            "headman",
-            "deputy",
-            "curator",
-        ]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+        self._check_can_manage(target_group_id, current_user)
 
         await self.ovr_repo.upsert(
             group_id=target_group_id,
@@ -299,27 +293,21 @@ class ScheduleService:
         group_id: int,
         current_user: AuthUser,
     ) -> list[dict]:
-        if (
-            not current_user.is_superadmin
-            and str(group_id) not in current_user.groups_roles
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+        self._check_can_view(group_id, current_user)
 
         schedules, lessons = await self.schedule_repo.get_base_lessons_with_schedules(
             group_id
         )
 
         sched_to_day = {s.id: s.day_of_week for s in schedules}
-        lessons_by_day: dict[int, list[Lesson]] = {d: [] for d in range(0, 7)}
+        lessons_by_day: dict[int, list[Lesson]] = {d: [] for d in range(1, 8)}
         for l in lessons:
             day = sched_to_day.get(l.schedule_id)
             if day in lessons_by_day:
                 lessons_by_day[day].append(l)
 
         res = []
-        for day in range(0, 7):
+        for day in range(1, 8):
             res.append(
                 {
                     "day_of_week": day,
@@ -353,40 +341,34 @@ class ScheduleService:
         self,
         group_id: int,
         day_of_week: int,
-        data: dict,
+        body: BaseLessonCreateRequest,
         current_user: AuthUser,
     ) -> dict:
-        if (
-            not current_user.is_superadmin
-            and str(group_id) not in current_user.groups_roles
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
-            )
+        self._check_can_manage(group_id, current_user)
 
         schedule = await self.schedule_repo.get_or_create_schedule(
             group_id, day_of_week
         )
 
-        start_time_obj = datetime.strptime(data["start_time"], "%H:%M").time()
-        end_time_obj = datetime.strptime(data["end_time"], "%H:%M").time()
+        start_time_obj = datetime.strptime(body.start_time, "%H:%M").time()
+        end_time_obj = datetime.strptime(body.end_time, "%H:%M").time()
         valid_from_obj = (
-            datetime.strptime(data["valid_from"], "%Y-%m-%d").date()
-            if data.get("valid_from")
+            datetime.strptime(body.valid_from, "%Y-%m-%d").date()
+            if body.valid_from
             else None
         )
         valid_until_obj = (
-            datetime.strptime(data["valid_until"], "%Y-%m-%d").date()
-            if data.get("valid_until")
+            datetime.strptime(body.valid_until, "%Y-%m-%d").date()
+            if body.valid_until
             else None
         )
 
         lesson = await self.schedule_repo.create_lesson(
             schedule_id=schedule.id,
-            lesson_number=data.get("lesson_number", 1),
-            name=data["name"],
-            teacher=data.get("teacher"),
-            classroom=data.get("classroom"),
+            lesson_number=body.lesson_number,
+            name=body.name,
+            teacher=body.teacher,
+            classroom=body.classroom,
             start_time=start_time_obj,
             end_time=end_time_obj,
             valid_from=valid_from_obj,
@@ -398,7 +380,7 @@ class ScheduleService:
     async def update_base_lesson(
         self,
         lesson_id: int,
-        data: dict,
+        body: BaseLessonUpdateRequest,
         current_user: AuthUser,
     ) -> dict:
         lesson = await self.schedule_repo.get_lesson_by_id(lesson_id)
@@ -409,15 +391,16 @@ class ScheduleService:
             )
 
         schedule = await self.schedule_repo.get_by_id(lesson.schedule_id)
-        if not schedule or (
-            not current_user.is_superadmin
-            and str(schedule.group_id) not in current_user.groups_roles
-        ):
+        if not schedule:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Schedule not found",
             )
+        self._check_can_manage(schedule.group_id, current_user)
 
-        await self.schedule_repo.update_lesson(lesson, data)
+        await self.schedule_repo.update_lesson(
+            lesson, body.model_dump(exclude_unset=True)
+        )
         await self.session.commit()
         return {"status": "ok"}
 
@@ -434,13 +417,12 @@ class ScheduleService:
             )
 
         schedule = await self.schedule_repo.get_by_id(lesson.schedule_id)
-        if not schedule or (
-            not current_user.is_superadmin
-            and str(schedule.group_id) not in current_user.groups_roles
-        ):
+        if not schedule:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Schedule not found",
             )
+        self._check_can_manage(schedule.group_id, current_user)
 
         await self.schedule_repo.delete_lesson(lesson)
         await self.session.commit()

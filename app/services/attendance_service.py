@@ -155,7 +155,7 @@ class AttendanceService:
         )
 
         lesson_name = await self._get_lesson_name(
-            data.group_id, data.date, data.time, dt.weekday()
+            data.group_id, data.date, data.time, dt.isoweekday()
         )
         admin_name = get_display_name(user)
         stat_str = _format_status(data.status)

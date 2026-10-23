@@ -174,7 +174,7 @@ function getSemesterName(valid_from?: string): string {
           </span>
           <div class="flex items-center gap-3">
             <span class="text-xs font-medium text-app-muted bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-              {{ schedules.find(s => s.day_of_week === day)?.lessons.length || 0 }} пар
+              {{ schedules.find(s => s.day_of_week === day + 1)?.lessons.length || 0 }} пар
             </span>
             <ChevronUp v-if="expandedDays.has(day)" class="w-4 h-4 text-app-muted" />
             <ChevronDown v-else class="w-4 h-4 text-app-muted" />
@@ -183,11 +183,11 @@ function getSemesterName(valid_from?: string): string {
 
         <!-- Lessons List -->
         <div v-show="expandedDays.has(day)" class="p-3 bg-app-card border-t border-app-border space-y-2">
-          <template v-for="(lesson, index) in (schedules.find(s => s.day_of_week === day)?.lessons || [])" :key="lesson.id">
+          <template v-for="(lesson, index) in (schedules.find(s => s.day_of_week === day + 1)?.lessons || [])" :key="lesson.id">
             
             <!-- Semester Header -->
             <div 
-              v-if="index === 0 || getSemesterName(lesson.valid_from) !== getSemesterName(schedules.find(s => s.day_of_week === day)!.lessons[index - 1].valid_from)"
+              v-if="index === 0 || getSemesterName(lesson.valid_from) !== getSemesterName(schedules.find(s => s.day_of_week === day + 1)!.lessons[index - 1].valid_from)"
               class="text-[10px] font-bold text-app-muted uppercase tracking-wider mt-4 mb-2 px-1"
               :class="{ 'mt-0': index === 0 }"
             >
@@ -221,7 +221,7 @@ function getSemesterName(valid_from?: string): string {
               <!-- Actions -->
               <div class="flex items-center gap-2 self-end sm:self-auto sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <button 
-                  @click="openEditModal(day, lesson)"
+                  @click="openEditModal(day + 1, lesson)"
                   class="p-2 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
                   title="Редактировать"
                 >
@@ -238,13 +238,13 @@ function getSemesterName(valid_from?: string): string {
             </div>
           </template>
 
-          <div v-if="!schedules.find(s => s.day_of_week === day)?.lessons.length" class="text-center py-4 text-xs text-app-muted italic">
+          <div v-if="!schedules.find(s => s.day_of_week === day + 1)?.lessons.length" class="text-center py-4 text-xs text-app-muted italic">
             Нет пар в этот день
           </div>
 
           <!-- Add Button -->
           <button 
-            @click="openAddModal(day)"
+            @click="openAddModal(day + 1)"
             class="w-full mt-2 py-2.5 flex items-center justify-center gap-2 rounded-xl border border-dashed border-app-border text-app-muted hover:text-app-accent hover:border-app-accent hover:bg-app-accent/5 transition-all text-sm font-medium"
           >
             <Plus class="w-4 h-4" />

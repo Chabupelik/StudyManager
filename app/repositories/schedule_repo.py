@@ -165,7 +165,7 @@ class ScheduleRepository(BaseRepository[Schedule]):
         return schedules, lessons
 
     async def get_base_times_for_date(self, group_id: int, date_str: str) -> set[str]:
-        weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+        weekday = datetime.strptime(date_str, "%Y-%m-%d").isoweekday()
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
 
         stmt = (
@@ -185,7 +185,7 @@ class ScheduleRepository(BaseRepository[Schedule]):
     async def get_base_lessons_for_date(
         self, group_id: int, date_str: str
     ) -> Sequence[Lesson]:
-        weekday = datetime.strptime(date_str, "%Y-%m-%d").weekday()
+        weekday = datetime.strptime(date_str, "%Y-%m-%d").isoweekday()
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
 
         stmt = (

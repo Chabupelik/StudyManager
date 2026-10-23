@@ -62,7 +62,7 @@ def compute_total_hours(
     curr = start_dt
     while curr <= end_dt:
         d_str = curr.strftime("%Y-%m-%d")
-        wday = curr.weekday()
+        wday = curr.isoweekday()
 
         base_times = set()
         for l, day in base_lessons:
@@ -221,7 +221,7 @@ async def compute_subject_stats(
 
     while curr_dt <= end_limit:
         d_str = curr_dt.strftime("%Y-%m-%d")
-        wday = curr_dt.weekday()
+        wday = curr_dt.isoweekday()
 
         day_times = set()
         for l, day in base_lessons:
@@ -258,7 +258,7 @@ async def compute_subject_stats(
         ):
             continue
         d_str, t_str = a.date, a.time
-        wday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
+        wday = datetime.strptime(d_str, "%Y-%m-%d").isoweekday()
         name, _ = _get_subject_at_memory(d_str, t_str, wday, override_map, base_lessons)
         if not name:
             name = "Доп. занятие"
@@ -414,7 +414,7 @@ class StatsService:
 
         for a in absences:
             d_str, t_str = a.date, a.time
-            weekday = datetime.strptime(d_str, "%Y-%m-%d").weekday()
+            weekday = datetime.strptime(d_str, "%Y-%m-%d").isoweekday()
 
             if d_str not in day_totals:
                 base_times = await get_base_times_for_date(
