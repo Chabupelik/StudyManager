@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -8,6 +10,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
+from app.db.redis_client import RedisClient
 from app.models.group_member import MemberRole
 from app.models.schedule_new import Lesson
 from app.repositories.group_repo import GroupRepository
@@ -20,6 +23,8 @@ from app.schemas.groups_schedule import (
     TodayLessonResponse,
 )
 from app.services.user_service import AuthUser
+
+logger = logging.getLogger(__name__)
 
 MSK = ZoneInfo("Europe/Moscow")
 _DAY_NAMES = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
@@ -45,10 +50,24 @@ class GroupsScheduleService:
         session: AsyncSession,
         schedule_repo: ScheduleRepository,
         group_repo: GroupRepository,
+        redis: RedisClient | None = None,
     ) -> None:
         self.session = session
         self.schedule_repo = schedule_repo
         self.group_repo = group_repo
+        self.redis = redis
+
+    async def _invalidate_base_schedule(self, group_id: int) -> None:
+        if self.redis is not None:
+            try:
+                await self.redis.delete(f"cache:schedule:base:{group_id}")
+                await self.redis.delete(f"cache:groups_schedule:full:{group_id}")
+            except Exception as e:
+                logger.warning(
+                    "Redis invalidate base schedule failed for %s: %s",
+                    group_id,
+                    e,
+                )
 
     def _check_can_view(self, group_id: int, user: AuthUser) -> None:
         if user.is_superadmin:
@@ -100,6 +119,7 @@ class GroupsScheduleService:
         )
         await self.session.commit()
         await self.schedule_repo.refresh(sched)
+        await self._invalidate_base_schedule(group_id)
         return ScheduleResponse(
             id=sched.id,
             group_id=sched.group_id,
@@ -146,6 +166,7 @@ class GroupsScheduleService:
         )
         await self.session.commit()
         await self.schedule_repo.refresh_lesson(lesson)
+        await self._invalidate_base_schedule(group_id)
         return _lesson_to_response(lesson)
 
     async def get_today_schedule(
@@ -174,6 +195,18 @@ class GroupsScheduleService:
         self, group_id: int, current_user: AuthUser
     ) -> list[ScheduleResponse]:
         self._check_can_view(group_id, current_user)
+
+        cache_key = f"cache:groups_schedule:full:{group_id}"
+        if self.redis is not None:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached is not None:
+                    return [
+                        ScheduleResponse.model_validate(x) for x in json.loads(cached)
+                    ]
+            except Exception as e:
+                logger.warning("Redis get full schedule failed for %s: %s", group_id, e)
+
         schedules = await self.schedule_repo.get_all_for_group(group_id)
         if not schedules:
             return []
@@ -185,7 +218,7 @@ class GroupsScheduleService:
         for l in all_lessons:
             lessons_by_schedule[l.schedule_id].append(l)
 
-        return [
+        res = [
             ScheduleResponse(
                 id=sched.id,
                 group_id=sched.group_id,
@@ -201,12 +234,27 @@ class GroupsScheduleService:
             for sched in schedules
         ]
 
+        if self.redis is not None:
+            try:
+                await self.redis.set(
+                    cache_key,
+                    json.dumps([s.model_dump(mode="json") for s in res]),
+                    ex=3600,
+                )
+            except Exception as e:
+                logger.warning("Redis set full schedule failed for %s: %s", group_id, e)
 
-def get_groups_schedule_service(db: DbSession) -> GroupsScheduleService:
+        return res
+
+
+def get_groups_schedule_service(
+    db: DbSession, redis: RedisClient
+) -> GroupsScheduleService:
     return GroupsScheduleService(
         session=db,
         schedule_repo=ScheduleRepository(db),
         group_repo=GroupRepository(db),
+        redis=redis,
     )
 
 

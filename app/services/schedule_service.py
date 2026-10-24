@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timedelta
 from typing import Annotated
 from zoneinfo import ZoneInfo
@@ -8,6 +10,7 @@ from fastapi import BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession, async_session_maker
+from app.db.redis_client import RedisClient
 from app.models.override import Override
 from app.models.schedule_new import Lesson
 from app.repositories.attendance_repo import AttendanceRepository
@@ -22,6 +25,8 @@ from app.schemas.schedule import (
 from app.services.audit_service import log_action
 from app.services.user_service import AuthUser, get_display_name
 from app.services.websocket_service import WebSocketService
+
+logger = logging.getLogger(__name__)
 
 MSK = ZoneInfo("Europe/Moscow")
 LESSON_DURATION_MINUTES = 90
@@ -180,11 +185,22 @@ class ScheduleService:
         schedule_repo: ScheduleRepository,
         att_repo: AttendanceRepository,
         ovr_repo: OverrideRepository,
+        redis: RedisClient | None = None,
     ) -> None:
         self.session = session
         self.schedule_repo = schedule_repo
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
+        self.redis = redis
+
+    async def _invalidate_base_schedule(self, group_id: int) -> None:
+        if self.redis is not None:
+            try:
+                await self.redis.delete(f"cache:schedule:base:{group_id}")
+            except Exception as e:
+                logger.warning(
+                    "Redis invalidate base schedule failed for %s: %s", group_id, e
+                )
 
     def _check_can_view(self, group_id: int, user: AuthUser) -> None:
         if not user.is_superadmin and str(group_id) not in user.groups_roles:
@@ -295,6 +311,15 @@ class ScheduleService:
     ) -> list[dict]:
         self._check_can_view(group_id, current_user)
 
+        cache_key = f"cache:schedule:base:{group_id}"
+        if self.redis is not None:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached is not None:
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning("Redis get base schedule failed for %s: %s", group_id, e)
+
         schedules, lessons = await self.schedule_repo.get_base_lessons_with_schedules(
             group_id
         )
@@ -336,6 +361,13 @@ class ScheduleService:
                     ],
                 }
             )
+
+        if self.redis is not None:
+            try:
+                await self.redis.set(cache_key, json.dumps(res), ex=3600)
+            except Exception as e:
+                logger.warning("Redis set base schedule failed for %s: %s", group_id, e)
+
         return res
 
     async def create_base_lesson(
@@ -376,6 +408,7 @@ class ScheduleService:
             valid_until=valid_until_obj,
         )
         await self.session.commit()
+        await self._invalidate_base_schedule(group_id)
         return {"status": "ok", "id": lesson.id}
 
     async def update_base_lesson(
@@ -403,6 +436,7 @@ class ScheduleService:
             lesson, body.model_dump(exclude_unset=True)
         )
         await self.session.commit()
+        await self._invalidate_base_schedule(schedule.group_id)
         return {"status": "ok"}
 
     async def delete_base_lesson(
@@ -427,15 +461,17 @@ class ScheduleService:
 
         await self.schedule_repo.delete_lesson(lesson)
         await self.session.commit()
+        await self._invalidate_base_schedule(schedule.group_id)
         return {"status": "ok"}
 
 
-def get_schedule_service(db: DbSession) -> ScheduleService:
+def get_schedule_service(db: DbSession, redis: RedisClient) -> ScheduleService:
     return ScheduleService(
         session=db,
         schedule_repo=ScheduleRepository(db),
         att_repo=AttendanceRepository(db),
         ovr_repo=OverrideRepository(db),
+        redis=redis,
     )
 
 

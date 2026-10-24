@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import calendar
+import json
+import logging
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -8,6 +10,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import DbSession
+from app.db.redis_client import RedisClient
 from app.models.attendance import Attendance
 from app.models.override import Override
 from app.models.schedule_new import Lesson
@@ -17,6 +20,8 @@ from app.repositories.schedule_repo import ScheduleRepository
 from app.repositories.user_repo import UserRepository
 from app.services.schedule_service import compute_active_times
 from app.services.user_service import AuthUser
+
+logger = logging.getLogger(__name__)
 
 
 def _build_override_map(overrides: list[Override]) -> dict[tuple[str, str], dict]:
@@ -264,12 +269,14 @@ class StatsService:
         ovr_repo: OverrideRepository,
         user_repo: UserRepository,
         schedule_repo: ScheduleRepository,
+        redis: RedisClient | None = None,
     ) -> None:
         self.session = session
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
         self.user_repo = user_repo
         self.schedule_repo = schedule_repo
+        self.redis = redis
 
     def _parse_year_month(self, year: str, month: str) -> tuple[int, int, str]:
         try:
@@ -322,6 +329,21 @@ class StatsService:
                 "stats": [],
             }
 
+        cache_key = f"cache:stats:{target_group_id}:{year}:{month}"
+        if self.redis is not None:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached is not None:
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning(
+                    "Redis get stats failed for %s:%s-%s: %s",
+                    target_group_id,
+                    year,
+                    month,
+                    e,
+                )
+
         sem_start, sem_end = get_semester_dates(y_int, m_int)
         _, last_day = calendar.monthrange(y_int, m_int)
         month_start = f"{y_int}-{m_int:02d}-01"
@@ -364,12 +386,26 @@ class StatsService:
                 }
             )
 
-        return {
+        response_data = {
             "total_month_hours": total_month_hours,
             "total_lifetime_hours": total_lifetime_hours,
             "total_semester_hours": total_semester_hours,
             "stats": result,
         }
+
+        if self.redis is not None:
+            try:
+                await self.redis.set(cache_key, json.dumps(response_data), ex=180)
+            except Exception as e:
+                logger.warning(
+                    "Redis set stats failed for %s:%s-%s: %s",
+                    target_group_id,
+                    year,
+                    month,
+                    e,
+                )
+
+        return response_data
 
     async def get_student_absences(
         self,
@@ -380,6 +416,20 @@ class StatsService:
         target_group_id = self._resolve_target_group(group_id, current_user)
         if target_group_id is None:
             return {"absences": []}
+
+        cache_key = f"cache:stats:absences:{target_group_id}:{student_id}"
+        if self.redis is not None:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached is not None:
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning(
+                    "Redis get student absences failed for %s:%s: %s",
+                    target_group_id,
+                    student_id,
+                    e,
+                )
 
         absences = await self.att_repo.get_student_absences(target_group_id, student_id)
         overrides = await self.ovr_repo.get_for_group(target_group_id)
@@ -418,7 +468,20 @@ class StatsService:
             )
 
         result.sort(key=lambda x: (x["date"], x["time"].zfill(5)), reverse=True)
-        return {"absences": result}
+        response_data = {"absences": result}
+
+        if self.redis is not None:
+            try:
+                await self.redis.set(cache_key, json.dumps(response_data), ex=120)
+            except Exception as e:
+                logger.warning(
+                    "Redis set student absences failed for %s:%s: %s",
+                    target_group_id,
+                    student_id,
+                    e,
+                )
+
+        return response_data
 
     async def get_student_subject_stats(
         self,
@@ -432,6 +495,20 @@ class StatsService:
         target_group_id = self._resolve_target_group(group_id, current_user)
         if target_group_id is None:
             return {"subjects": []}
+
+        cache_key = f"cache:stats:subj:{target_group_id}:{student_id}:{year}:{month}"
+        if self.redis is not None:
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached is not None:
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning(
+                    "Redis get student subject stats failed for %s:%s: %s",
+                    target_group_id,
+                    student_id,
+                    e,
+                )
 
         sem_start, sem_end = get_semester_dates(y_int, m_int)
 
@@ -448,16 +525,30 @@ class StatsService:
             sem_start,
             sem_end,
         )
-        return {"subjects": subjects}
+        response_data = {"subjects": subjects}
+
+        if self.redis is not None:
+            try:
+                await self.redis.set(cache_key, json.dumps(response_data), ex=180)
+            except Exception as e:
+                logger.warning(
+                    "Redis set student subject stats failed for %s:%s: %s",
+                    target_group_id,
+                    student_id,
+                    e,
+                )
+
+        return response_data
 
 
-def get_stats_service(db: DbSession) -> StatsService:
+def get_stats_service(db: DbSession, redis: RedisClient) -> StatsService:
     return StatsService(
         session=db,
         att_repo=AttendanceRepository(db),
         ovr_repo=OverrideRepository(db),
         user_repo=UserRepository(db),
         schedule_repo=ScheduleRepository(db),
+        redis=redis,
     )
 
 
