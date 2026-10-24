@@ -197,6 +197,7 @@ class ScheduleService:
         if self.redis is not None:
             try:
                 await self.redis.delete(f"cache:schedule:base:{group_id}")
+                await self.redis.delete(f"cache:groups_schedule:full:{group_id}")
             except Exception as e:
                 logger.warning(
                     "Redis invalidate base schedule failed for %s: %s", group_id, e
