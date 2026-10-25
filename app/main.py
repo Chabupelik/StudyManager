@@ -89,12 +89,17 @@ async def log_requests_middleware(request: Request, call_next):
     response: Response = await call_next(request)
     process_time_ms = (time.time() - start_time) * 1000
     client_ip = get_client_ip(request)
+    url_path = (
+        f"{request.url.path}?{request.url.query}"
+        if request.url.query
+        else request.url.path
+    )
 
     logger.info(
         '%s - "%s %s" %s (%.2fms)',
         client_ip,
         request.method,
-        request.url.path,
+        url_path,
         response.status_code,
         process_time_ms,
     )
