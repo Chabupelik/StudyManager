@@ -1,15 +1,27 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { Lesson } from '../../types/schedule';
 import MarqueeText from '../common/MarqueeText.vue';
 import { ChevronRight, User, CheckCircle2, AlertCircle } from 'lucide-vue-next';
 
-defineProps<{
+const props = defineProps<{
   lesson: Lesson;
 }>();
 
 const emit = defineEmits<{
   (e: 'click'): void;
 }>();
+
+const pairNumber = computed(() => {
+  if (props.lesson.is_homeroom) return null;
+  if (props.lesson.lesson_number != null) return props.lesson.lesson_number;
+  // Fallback calculation from 8:00
+  if (!props.lesson.time || !props.lesson.time.includes(':')) return null;
+  const [hStr, mStr] = props.lesson.time.split(':');
+  const t = parseInt(hStr, 10) * 60 + parseInt(mStr, 10);
+  if (t < 440) return null;
+  return Math.max(1, Math.round((t - 480) / 95) + 1);
+});
 
 function getEndTime(startTime: string, isHomeroom?: boolean): string {
   if (!startTime || !startTime.includes(':')) return '';
@@ -45,6 +57,10 @@ function getEndTime(startTime: string, isHomeroom?: boolean): string {
       <div
         class="flex flex-col items-center justify-center px-1.5 py-1.5 w-full rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs border border-blue-200/80 dark:border-blue-800/60 shadow-sm"
       >
+        <span
+          v-if="pairNumber != null"
+          class="text-[9px] font-bold opacity-60 tracking-widest uppercase mb-0.5"
+        >{{ pairNumber }}-я пара</span>
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
         <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.is_homeroom) }}</span>

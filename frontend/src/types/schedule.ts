@@ -7,6 +7,7 @@ export interface Lesson {
   absent_count: number;
   is_current?: boolean;
   is_homeroom?: boolean;
+  lesson_number?: number | null;
 }
 
 export interface ScheduleResponse {

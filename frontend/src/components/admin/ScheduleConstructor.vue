@@ -99,7 +99,7 @@ async function saveLesson() {
   isSaving.value = true;
   try {
     const payload = {
-      lesson_number: 1,
+      lesson_number: editingLesson.value.lesson_number || 1,
       name: editingLesson.value.name,
       teacher: editingLesson.value.teacher || null,
       classroom: editingLesson.value.classroom || null,
@@ -208,8 +208,11 @@ function getSemesterName(valid_from?: string): string {
             <div class="group flex flex-col sm:flex-row gap-3 sm:items-center justify-between p-3 rounded-xl border border-app-border/50 bg-slate-50/50 dark:bg-slate-800/20 hover:border-app-accent/30 hover:bg-app-accent/5 transition-all">
               <!-- Lesson Info -->
               <div class="flex items-center gap-3">
-                <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-200 dark:bg-slate-700 text-app-text font-bold text-xs shrink-0">
-                  {{ index + 1 }}
+                <div
+                  class="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-xs shrink-0"
+                  :class="lesson.is_homeroom ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400' : 'bg-slate-200 dark:bg-slate-700 text-app-text'"
+                >
+                  {{ lesson.is_homeroom ? 'КЧ' : (lesson.lesson_number || index + 1) }}
                 </div>
                 <div>
                   <div class="text-sm font-bold text-app-text flex items-center gap-2 flex-wrap">

@@ -14,6 +14,7 @@ class LessonResponse(BaseModel):
     is_current: bool
     classroom: str | None = None
     is_homeroom: bool = False
+    lesson_number: int | None = None
 
 
 class ScheduleResponse(BaseModel):

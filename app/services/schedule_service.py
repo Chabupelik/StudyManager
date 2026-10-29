@@ -82,6 +82,30 @@ def compute_active_times(base_times: set[str], overrides: list[Override]) -> set
     return (base_times - canceled) | added
 
 
+def compute_lesson_number(
+    time_str: str,
+    is_homeroom: bool,
+    homeroom_times: list[str],
+) -> int | None:
+    if is_homeroom:
+        return None
+    try:
+        h, m = map(int, time_str.split(":"))
+        t = h * 60 + m
+    except ValueError:
+        return None
+
+    homerooms_before = sum(
+        1
+        for hr_t in homeroom_times
+        if int(hr_t.split(":")[0]) * 60 + int(hr_t.split(":")[1]) < t
+    )
+    effective_t = t + 30 * homerooms_before
+    if effective_t < 440:  # before ~07:20
+        return None
+    return max(1, round((effective_t - 480) / 95) + 1)
+
+
 async def build_schedule(
     session: AsyncSession,
     group_id: int,
@@ -92,6 +116,13 @@ async def build_schedule(
 ) -> list[dict]:
     base_lessons = await get_base_lessons_for_date(session, group_id, date_str)
     override_map: dict[str, Override] = {o.time: o for o in overrides}
+
+    canceled_times = {o.time for o in overrides if o.is_canceled}
+    homeroom_times = [
+        l["time"]
+        for l in base_lessons
+        if l.get("is_homeroom") and l["time"] not in canceled_times
+    ]
 
     temp: list[dict] = []
     processed_times: set[str] = set()
@@ -157,6 +188,9 @@ async def build_schedule(
 
     for lesson in temp:
         lesson["is_current"] = lesson["time"] == current_id
+        lesson["lesson_number"] = compute_lesson_number(
+            lesson["time"], lesson["is_homeroom"], homeroom_times
+        )
 
     return temp
 
@@ -343,6 +377,10 @@ class ScheduleService:
 
         res = []
         for day in range(0, 7):
+            day_lessons = lessons_by_day[day]
+            day_hr_times = [
+                l.start_time.strftime("%H:%M") for l in day_lessons if l.is_homeroom
+            ]
             res.append(
                 {
                     "group_id": group_id,
@@ -350,7 +388,12 @@ class ScheduleService:
                     "lessons": [
                         {
                             "id": l.id,
-                            "lesson_number": l.lesson_number,
+                            "lesson_number": compute_lesson_number(
+                                l.start_time.strftime("%H:%M"),
+                                bool(l.is_homeroom),
+                                day_hr_times,
+                            )
+                            or l.lesson_number,
                             "name": l.name,
                             "teacher": l.teacher,
                             "classroom": l.classroom,
@@ -369,7 +412,7 @@ class ScheduleService:
                             "is_homeroom": l.is_homeroom,
                             "is_hidden": l.is_hidden,
                         }
-                        for l in lessons_by_day[day]
+                        for l in day_lessons
                     ],
                 }
             )
