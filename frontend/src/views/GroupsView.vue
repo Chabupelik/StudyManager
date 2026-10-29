@@ -372,10 +372,13 @@ async function doDeleteGroup() {
           <!-- Members List -->
           <div v-else class="space-y-1.5">
             <div
-              v-for="m in sortedMembers"
+              v-for="(m, index) in sortedMembers"
               :key="m.user_id"
               class="flex items-center gap-3 p-2.5 rounded-xl bg-app-canvas hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors"
             >
+              <!-- Index number -->
+              <span class="w-5 text-center text-[11px] font-bold text-app-muted flex-shrink-0">{{ index + 1 }}</span>
+
               <!-- Role icon -->
               <div
                 class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
