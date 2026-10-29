@@ -11,22 +11,42 @@ const emit = defineEmits<{
   (e: 'click'): void;
 }>();
 
-function getEndTime(startTime: string, name: string): string {
-  if (!startTime || !startTime.includes(':')) return '';
-  const [hoursStr, minutesStr] = startTime.split(':');
-  let hours = parseInt(hoursStr, 10);
-  let minutes = parseInt(minutesStr, 10);
+const DAY_START_MINUTES = 8 * 60; // 08:00
+const LESSON_DURATION = 90; // минут
 
-  // Классный час lasts 60 minutes, others last 90 minutes
-  const duration = name.toLowerCase().includes('классный час') ? 60 : 90;
-  
-  minutes += duration;
-  hours += Math.floor(minutes / 60);
-  minutes = minutes % 60;
-  
-  const formattedHours = hours.toString().padStart(2, '0');
-  const formattedMinutes = minutes.toString().padStart(2, '0');
-  
+function timeToMinutes(time: string): number {
+  if (!time || !time.includes(':')) return -1;
+  const [h, m] = time.split(':');
+  return parseInt(h, 10) * 60 + parseInt(m, 10);
+}
+
+function isClassHour(name: string): boolean {
+  return name.toLowerCase().includes('классный час');
+}
+
+/**
+ * Вычисляет номер пары по времени начала.
+ * Счётчик стартует с 08:00, шаг — 90 мин.
+ * Классный час (60 мин) не нумеруется как пара — возвращает null.
+ */
+function getLessonNumber(startTime: string, name: string): number | null {
+  if (isClassHour(name)) return null;
+  const start = timeToMinutes(startTime);
+  if (start < DAY_START_MINUTES) return null;
+  return Math.floor((start - DAY_START_MINUTES) / LESSON_DURATION) + 1;
+}
+
+function getEndTime(startTime: string, name: string): string {
+  const start = timeToMinutes(startTime);
+  if (start < 0) return '';
+
+  // Классный час — 60 мин, остальные пары — 90 мин
+  const duration = isClassHour(name) ? 60 : LESSON_DURATION;
+  const end = start + duration;
+
+  const formattedHours = Math.floor(end / 60).toString().padStart(2, '0');
+  const formattedMinutes = (end % 60).toString().padStart(2, '0');
+
   return `${formattedHours}:${formattedMinutes}`;
 }
 </script>
@@ -45,6 +65,10 @@ function getEndTime(startTime: string, name: string): string {
       <div
         class="flex flex-col items-center justify-center px-1.5 py-1.5 w-full rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs border border-blue-200/80 dark:border-blue-800/60 shadow-sm"
       >
+        <span
+          v-if="getLessonNumber(lesson.time, lesson.name) !== null"
+          class="text-[9px] font-bold opacity-60 tracking-widest uppercase mb-0.5"
+        >{{ getLessonNumber(lesson.time, lesson.name) }}-я пара</span>
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
         <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.name) }}</span>
