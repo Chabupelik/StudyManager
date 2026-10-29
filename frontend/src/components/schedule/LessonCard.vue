@@ -11,14 +11,14 @@ const emit = defineEmits<{
   (e: 'click'): void;
 }>();
 
-function getEndTime(startTime: string, name: string, isHomeroom?: boolean): string {
+function getEndTime(startTime: string, isHomeroom?: boolean): string {
   if (!startTime || !startTime.includes(':')) return '';
   const [hoursStr, minutesStr] = startTime.split(':');
   let hours = parseInt(hoursStr, 10);
   let minutes = parseInt(minutesStr, 10);
 
   // Классный час lasts 60 minutes, others last 90 minutes
-  const duration = (isHomeroom || name.toLowerCase().includes('классный час')) ? 60 : 90;
+  const duration = isHomeroom ? 60 : 90;
   
   minutes += duration;
   hours += Math.floor(minutes / 60);
@@ -47,7 +47,7 @@ function getEndTime(startTime: string, name: string, isHomeroom?: boolean): stri
       >
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
-        <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.name, lesson.is_homeroom) }}</span>
+        <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.is_homeroom) }}</span>
       </div>
       <div
         v-if="lesson.classroom"

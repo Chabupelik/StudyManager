@@ -72,11 +72,7 @@ def compute_total_hours(
         base_times = set()
         for l, day in base_lessons:
             if day == wday:
-                if (
-                    getattr(l, "is_homeroom", 0)
-                    or getattr(l, "is_hidden", 0)
-                    or "классный час" in l.name.lower()
-                ):
+                if getattr(l, "is_homeroom", 0) or getattr(l, "is_hidden", 0):
                     continue
                 if (l.valid_from is None or l.valid_from <= curr) and (
                     l.valid_until is None or l.valid_until >= curr
@@ -205,11 +201,7 @@ def compute_subject_stats(
         day_times = set()
         for l, day in base_lessons:
             if day == wday:
-                if (
-                    getattr(l, "is_homeroom", 0)
-                    or getattr(l, "is_hidden", 0)
-                    or "классный час" in l.name.lower()
-                ):
+                if getattr(l, "is_homeroom", 0) or getattr(l, "is_hidden", 0):
                     continue
                 if (l.valid_from is None or l.valid_from <= curr_dt.date()) and (
                     l.valid_until is None or l.valid_until >= curr_dt.date()

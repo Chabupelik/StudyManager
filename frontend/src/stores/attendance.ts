@@ -51,7 +51,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     lessonName.value = name;
     lessonTeacher.value = teacher;
     isCanceled.value = canceled;
-    isHomeroom.value = homeroom || name.toLowerCase().includes('классный час');
+    isHomeroom.value = homeroom;
     filter.value = 'all';
 
     loading.value = true;

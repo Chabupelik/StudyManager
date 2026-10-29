@@ -76,10 +76,7 @@ class AttendanceService:
         base_lesson = await self.schedule_repo.get_lesson_at_time(
             group_id, weekday, time_obj, date_obj
         )
-        if base_lesson and bool(base_lesson.is_homeroom):
-            return True
-        lesson_name = await self._get_lesson_name(group_id, date_str, time_str, weekday)
-        return "классный час" in lesson_name.lower()
+        return bool(base_lesson and base_lesson.is_homeroom)
 
     async def _get_lesson_name(
         self, group_id: int, date: str, time: str, weekday: int
@@ -123,9 +120,6 @@ class AttendanceService:
             for l in base_lessons
             if l.is_homeroom or l.is_hidden
         }
-        for o in overrides:
-            if o.new_name and "классный час" in o.new_name.lower():
-                excluded_times.add(o.time)
 
         base_times = {
             l.start_time.strftime("%H:%M")
@@ -257,9 +251,6 @@ class AttendanceService:
             for l in base_lessons
             if l.is_homeroom or l.is_hidden
         }
-        for o in overrides:
-            if o.new_name and "классный час" in o.new_name.lower():
-                excluded_times.add(o.time)
 
         base_times = {
             l.start_time.strftime("%H:%M")
