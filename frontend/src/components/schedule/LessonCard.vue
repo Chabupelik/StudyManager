@@ -5,13 +5,13 @@ import { ChevronRight, User, CheckCircle2, AlertCircle } from 'lucide-vue-next';
 
 defineProps<{
   lesson: Lesson;
+  pairNumber?: number | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'click'): void;
 }>();
 
-const DAY_START_MINUTES = 8 * 60; // 08:00
 const LESSON_DURATION = 90; // минут
 
 function timeToMinutes(time: string): number {
@@ -22,18 +22,6 @@ function timeToMinutes(time: string): number {
 
 function isClassHour(name: string): boolean {
   return name.toLowerCase().includes('классный час');
-}
-
-/**
- * Вычисляет номер пары по времени начала.
- * Счётчик стартует с 08:00, шаг — 90 мин.
- * Классный час (60 мин) не нумеруется как пара — возвращает null.
- */
-function getLessonNumber(startTime: string, name: string): number | null {
-  if (isClassHour(name)) return null;
-  const start = timeToMinutes(startTime);
-  if (start < DAY_START_MINUTES) return null;
-  return Math.floor((start - DAY_START_MINUTES) / LESSON_DURATION) + 1;
 }
 
 function getEndTime(startTime: string, name: string): string {
@@ -66,9 +54,9 @@ function getEndTime(startTime: string, name: string): string {
         class="flex flex-col items-center justify-center px-1.5 py-1.5 w-full rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs border border-blue-200/80 dark:border-blue-800/60 shadow-sm"
       >
         <span
-          v-if="getLessonNumber(lesson.time, lesson.name) !== null"
+          v-if="pairNumber != null"
           class="text-[9px] font-bold opacity-60 tracking-widest uppercase mb-0.5"
-        >{{ getLessonNumber(lesson.time, lesson.name) }}-я пара</span>
+        >{{ pairNumber }}-я пара</span>
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
         <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.name) }}</span>
