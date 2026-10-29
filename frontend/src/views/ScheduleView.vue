@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useScheduleStore } from '../stores/schedule';
 import { useAttendanceStore } from '../stores/attendance';
 import { useAuthStore } from '../stores/auth';
@@ -17,18 +17,6 @@ const authStore = useAuthStore();
 const uiStore = useUiStore();
 
 const showAddModal = ref(false);
-
-/**
- * Порядковые номера пар для каждого урока.
- * Классный час не считается парой — для него null.
- * Нумерация идёт последовательно по позиции в списке.
- */
-const pairNumbers = computed(() => {
-  let count = 0;
-  return scheduleStore.lessons.map(l =>
-    l.name.toLowerCase().includes('классный час') ? null : ++count
-  );
-});
 
 onMounted(() => {
   if (authStore.myGroups.length > 0 && !scheduleStore.selectedGroupId) {
@@ -128,10 +116,9 @@ function onTouchEnd(e: TouchEvent) {
       <!-- Actual Lessons -->
       <template v-else>
         <LessonCard
-          v-for="(l, i) in scheduleStore.lessons"
+          v-for="l in scheduleStore.lessons"
           :key="l.time"
           :lesson="l"
-          :pair-number="pairNumbers[i]"
           @click="openDetails(l)"
         />
       </template>
