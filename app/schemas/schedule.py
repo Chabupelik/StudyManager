@@ -13,7 +13,6 @@ class LessonResponse(BaseModel):
     absent_count: int
     is_current: bool
     classroom: str | None = None
-    lesson_number: int | None = None
 
 
 class ScheduleResponse(BaseModel):

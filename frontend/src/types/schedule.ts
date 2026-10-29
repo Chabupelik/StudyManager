@@ -6,7 +6,6 @@ export interface Lesson {
   canceled: boolean;
   absent_count: number;
   is_current?: boolean;
-  lesson_number?: number | null;
 }
 
 export interface ScheduleResponse {
