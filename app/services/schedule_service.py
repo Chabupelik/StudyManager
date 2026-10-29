@@ -67,6 +67,7 @@ async def get_base_lessons_for_date(
             "name": l.name,
             "teacher": l.teacher,
             "classroom": l.classroom,
+            "lesson_number": l.lesson_number,
         }
         for l in lessons
     ]
@@ -108,6 +109,7 @@ async def build_schedule(
                     else lesson.get("teacher") or "Не назначен"
                 ),
                 "classroom": lesson.get("classroom"),
+                "lesson_number": lesson.get("lesson_number"),
                 "canceled": bool(ovr and ovr.is_canceled),
                 "absent_count": absent_counts.get(t, 0),
             }
