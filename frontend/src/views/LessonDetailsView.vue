@@ -137,9 +137,10 @@ function handleOpenReason(s: StudentAttendance) {
 
         <template v-else>
           <StudentRow
-            v-for="s in attendanceStore.filteredStudents"
+            v-for="(s, index) in attendanceStore.filteredStudents"
             :key="s.id"
             :student="s"
+            :index="index + 1"
             @toggle-status="handleStatusToggle"
             @open-reason="handleOpenReason"
           />

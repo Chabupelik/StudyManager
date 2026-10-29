@@ -8,6 +8,7 @@ import { Check, Edit3 } from 'lucide-vue-next';
 
 const props = defineProps<{
   student: StudentAttendance;
+  index: number;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +33,8 @@ function handleStatusClick() {
   >
     <!-- Left: Avatar and Info -->
     <div class="flex items-center gap-3 min-w-0 flex-1 mr-2">
+      <!-- Index number -->
+      <span class="w-5 text-center text-[11px] font-bold text-app-muted flex-shrink-0 select-none">{{ index }}</span>
       <Avatar :tg-id="student.tg_id" :name="student.name" size="md" />
 
       <div class="min-w-0 flex-1">
