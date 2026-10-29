@@ -13,11 +13,11 @@ from app.models.audit import ActionLog
 from app.repositories.attendance_repo import AttendanceRepository
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.override_repo import OverrideRepository
+from app.repositories.schedule_repo import ScheduleRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.attendance import AttendanceUpdateRequest, LessonDetailsResponse
 from app.services.schedule_service import (
     compute_active_times,
-    get_base_times_for_date,
     get_subject_at,
 )
 from app.services.user_service import AuthUser, get_display_name
@@ -52,12 +52,14 @@ class AttendanceService:
         ovr_repo: OverrideRepository,
         user_repo: UserRepository,
         audit_repo: AuditRepository,
+        schedule_repo: ScheduleRepository | None = None,
     ) -> None:
         self.session = session
         self.att_repo = att_repo
         self.ovr_repo = ovr_repo
         self.user_repo = user_repo
         self.audit_repo = audit_repo
+        self.schedule_repo = schedule_repo or ScheduleRepository(session)
 
     def _check_group_access(self, group_id: int, user: AuthUser) -> None:
         if not user.is_superadmin and str(group_id) not in (user.groups_roles or {}):
@@ -65,6 +67,19 @@ class AttendanceService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: No access to this group",
             )
+
+    async def _is_homeroom_lesson(
+        self, group_id: int, date_str: str, time_str: str, weekday: int
+    ) -> bool:
+        time_obj = datetime.strptime(time_str, "%H:%M").time()
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        base_lesson = await self.schedule_repo.get_lesson_at_time(
+            group_id, weekday, time_obj, date_obj
+        )
+        if base_lesson and bool(base_lesson.is_homeroom):
+            return True
+        lesson_name = await self._get_lesson_name(group_id, date_str, time_str, weekday)
+        return "классный час" in lesson_name.lower()
 
     async def _get_lesson_name(
         self, group_id: int, date: str, time: str, weekday: int
@@ -90,7 +105,7 @@ class AttendanceService:
         time: str,
         user: AuthUser,
     ) -> LessonDetailsResponse:
-        _parse_date(date)
+        dt = _parse_date(date)
         self._check_group_access(group_id, user)
 
         current_att = {
@@ -100,8 +115,24 @@ class AttendanceService:
         all_day_att = await self.att_repo.get_for_date(group_id, date)
 
         overrides = await self.ovr_repo.get_for_date(group_id, date)
-        base_times = await get_base_times_for_date(self.session, group_id, date)
-        active_times = compute_active_times(base_times, overrides)
+        base_lessons = await self.schedule_repo.get_base_lessons_for_date(
+            group_id, date
+        )
+        excluded_times = {
+            l.start_time.strftime("%H:%M")
+            for l in base_lessons
+            if l.is_homeroom or l.is_hidden
+        }
+        for o in overrides:
+            if o.new_name and "классный час" in o.new_name.lower():
+                excluded_times.add(o.time)
+
+        base_times = {
+            l.start_time.strftime("%H:%M")
+            for l in base_lessons
+            if not l.is_homeroom and not l.is_hidden
+        }
+        active_times = compute_active_times(base_times, overrides) - excluded_times
 
         student_day_map: dict[int, dict[str, int]] = {}
         for r in all_day_att:
@@ -135,7 +166,9 @@ class AttendanceService:
                 }
             )
 
-        return LessonDetailsResponse(students=result)
+        is_homeroom = await self._is_homeroom_lesson(group_id, date, time, dt.weekday())
+
+        return LessonDetailsResponse(students=result, is_homeroom=is_homeroom)
 
     async def update_attendance(
         self,
@@ -144,6 +177,14 @@ class AttendanceService:
     ) -> dict:
         dt = _parse_date(data.date)
         self._check_group_access(data.group_id, user)
+
+        if await self._is_homeroom_lesson(
+            data.group_id, data.date, data.time, dt.weekday()
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Нельзя отмечать посещаемость на классном часе",
+            )
 
         await self.att_repo.upsert(
             group_id=data.group_id,
@@ -208,10 +249,24 @@ class AttendanceService:
         self._check_group_access(data.group_id, user)
 
         overrides = await self.ovr_repo.get_for_date(data.group_id, data.date)
-        base_times = await get_base_times_for_date(
-            self.session, data.group_id, data.date
+        base_lessons = await self.schedule_repo.get_base_lessons_for_date(
+            data.group_id, data.date
         )
-        active_times = compute_active_times(base_times, overrides)
+        excluded_times = {
+            l.start_time.strftime("%H:%M")
+            for l in base_lessons
+            if l.is_homeroom or l.is_hidden
+        }
+        for o in overrides:
+            if o.new_name and "классный час" in o.new_name.lower():
+                excluded_times.add(o.time)
+
+        base_times = {
+            l.start_time.strftime("%H:%M")
+            for l in base_lessons
+            if not l.is_homeroom and not l.is_hidden
+        }
+        active_times = compute_active_times(base_times, overrides) - excluded_times
 
         if not active_times:
             return {"status": "ok", "message": "На этот день нет занятий"}
@@ -274,6 +329,7 @@ def get_attendance_service(db: DbSession) -> AttendanceService:
         ovr_repo=OverrideRepository(db),
         user_repo=UserRepository(db),
         audit_repo=AuditRepository(db),
+        schedule_repo=ScheduleRepository(db),
     )
 
 

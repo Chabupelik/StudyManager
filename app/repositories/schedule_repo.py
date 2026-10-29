@@ -58,6 +58,8 @@ class ScheduleRepository(BaseRepository[Schedule]):
         classroom: str | None = None,
         valid_from: date | None = None,
         valid_until: date | None = None,
+        is_homeroom: int = 0,
+        is_hidden: int = 0,
     ) -> Lesson:
         lesson = Lesson(
             schedule_id=schedule_id,
@@ -69,6 +71,8 @@ class ScheduleRepository(BaseRepository[Schedule]):
             end_time=end_time,
             valid_from=valid_from,
             valid_until=valid_until,
+            is_homeroom=is_homeroom,
+            is_hidden=is_hidden,
         )
         self.session.add(lesson)
         await self.session.flush()
@@ -99,6 +103,10 @@ class ScheduleRepository(BaseRepository[Schedule]):
                 if data["valid_until"]
                 else None
             )
+        if "is_homeroom" in data and data["is_homeroom"] is not None:
+            lesson.is_homeroom = data["is_homeroom"]
+        if "is_hidden" in data and data["is_hidden"] is not None:
+            lesson.is_hidden = data["is_hidden"]
         await self.session.flush()
         return lesson
 

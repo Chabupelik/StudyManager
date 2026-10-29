@@ -41,3 +41,4 @@ class StudentAttendanceRow(BaseModel):
 
 class LessonDetailsResponse(BaseModel):
     students: list[StudentAttendanceRow]
+    is_homeroom: bool = False

@@ -11,6 +11,7 @@ export interface StudentAttendance {
 
 export interface LessonDetailsResponse {
   students: StudentAttendance[];
+  is_homeroom?: boolean;
 }
 
 export interface AttendanceUpdateRequest {

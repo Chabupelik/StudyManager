@@ -33,7 +33,7 @@ watch(() => authStore.myGroups, (newGroups) => {
 });
 
 function openDetails(lesson: any) {
-  attendanceStore.loadDetails(lesson.time, lesson.name, lesson.teacher, lesson.canceled);
+  attendanceStore.loadDetails(lesson.time, lesson.name, lesson.teacher, lesson.canceled, lesson.is_homeroom);
   uiStore.switchTab('details');
 }
 

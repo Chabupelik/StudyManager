@@ -13,6 +13,7 @@ class LessonResponse(BaseModel):
     absent_count: int
     is_current: bool
     classroom: str | None = None
+    is_homeroom: bool = False
 
 
 class ScheduleResponse(BaseModel):
@@ -57,6 +58,8 @@ class BaseLessonItem(BaseModel):
     end_time: str
     valid_from: str | None = None
     valid_until: str | None = None
+    is_homeroom: int = 0
+    is_hidden: int = 0
 
 
 class BaseScheduleResponse(BaseModel):
@@ -74,6 +77,8 @@ class BaseLessonCreateRequest(BaseModel):
     end_time: str
     valid_from: str | None = None
     valid_until: str | None = None
+    is_homeroom: int = 0
+    is_hidden: int = 0
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -122,6 +127,8 @@ class BaseLessonUpdateRequest(BaseModel):
     end_time: str | None = None
     valid_from: str | None = None
     valid_until: str | None = None
+    is_homeroom: int | None = None
+    is_hidden: int | None = None
 
     @field_validator("start_time", "end_time")
     @classmethod

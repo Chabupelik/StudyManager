@@ -54,6 +54,10 @@ async function toggleCancelLesson() {
 }
 
 function handleStatusToggle(s: StudentAttendance) {
+  if (attendanceStore.isHomeroom) {
+    uiStore.showToast('На классном часе отметки не ставятся', 'info');
+    return;
+  }
   // Cycle: 0 (Present) -> 1 (Absent) -> 2 (Excused) -> 0 (Present)
   if (s.status === 0) {
     attendanceStore.updateSingleAttendance(s.id, 1, s.reason);
@@ -126,8 +130,18 @@ function handleOpenReason(s: StudentAttendance) {
         </button>
       </div>
 
+      <!-- Homeroom Info Banner -->
+      <div v-if="attendanceStore.isHomeroom" class="premium-card rounded-2xl p-4 bg-purple-500/10 border border-purple-500/20 text-center space-y-1">
+        <span class="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">
+          🏫 Классный час
+        </span>
+        <p class="text-xs text-app-muted">
+          Отметки посещаемости на классном часе не предусмотрены
+        </p>
+      </div>
+
       <!-- Attendance Summary -->
-      <AttendanceSummary />
+      <AttendanceSummary v-else />
 
       <!-- Student Rows Card Container -->
       <div class="premium-card rounded-2xl overflow-hidden shadow-sm">
@@ -141,6 +155,7 @@ function handleOpenReason(s: StudentAttendance) {
             :key="s.id"
             :student="s"
             :index="index + 1"
+            :disabled="attendanceStore.isHomeroom"
             @toggle-status="handleStatusToggle"
             @open-reason="handleOpenReason"
           />

@@ -11,14 +11,14 @@ const emit = defineEmits<{
   (e: 'click'): void;
 }>();
 
-function getEndTime(startTime: string, name: string): string {
+function getEndTime(startTime: string, name: string, isHomeroom?: boolean): string {
   if (!startTime || !startTime.includes(':')) return '';
   const [hoursStr, minutesStr] = startTime.split(':');
   let hours = parseInt(hoursStr, 10);
   let minutes = parseInt(minutesStr, 10);
 
   // Классный час lasts 60 minutes, others last 90 minutes
-  const duration = name.toLowerCase().includes('классный час') ? 60 : 90;
+  const duration = (isHomeroom || name.toLowerCase().includes('классный час')) ? 60 : 90;
   
   minutes += duration;
   hours += Math.floor(minutes / 60);
@@ -47,7 +47,7 @@ function getEndTime(startTime: string, name: string): string {
       >
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
-        <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.name) }}</span>
+        <span class="tracking-tight opacity-75 text-[10px]">{{ getEndTime(lesson.time, lesson.name, lesson.is_homeroom) }}</span>
       </div>
       <div
         v-if="lesson.classroom"
@@ -85,19 +85,27 @@ function getEndTime(startTime: string, name: string): string {
 
       <div class="flex items-center gap-2 flex-wrap">
         <span
-          v-if="lesson.absent_count > 0"
-          class="inline-flex items-center gap-1 bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10.5px] font-bold px-2 py-0.5 rounded-md"
+          v-if="lesson.is_homeroom"
+          class="inline-flex items-center gap-1 bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[10.5px] font-bold px-2 py-0.5 rounded-md"
         >
-          <AlertCircle class="w-3 h-3" />
-          Отсутствуют: {{ lesson.absent_count }} чел.
+          Классный час
         </span>
-        <span
-          v-else-if="!lesson.canceled"
-          class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10.5px] font-semibold px-2 py-0.5 rounded-md"
-        >
-          <CheckCircle2 class="w-3 h-3" />
-          Все присутствуют
-        </span>
+        <template v-else>
+          <span
+            v-if="lesson.absent_count > 0"
+            class="inline-flex items-center gap-1 bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10.5px] font-bold px-2 py-0.5 rounded-md"
+          >
+            <AlertCircle class="w-3 h-3" />
+            Отсутствуют: {{ lesson.absent_count }} чел.
+          </span>
+          <span
+            v-else-if="!lesson.canceled"
+            class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10.5px] font-semibold px-2 py-0.5 rounded-md"
+          >
+            <CheckCircle2 class="w-3 h-3" />
+            Все присутствуют
+          </span>
+        </template>
       </div>
     </div>
 

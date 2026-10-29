@@ -9,6 +9,7 @@ import { Check, Edit3 } from 'lucide-vue-next';
 const props = defineProps<{
   student: StudentAttendance;
   index: number;
+  disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -20,7 +21,7 @@ const authStore = useAuthStore();
 const isMe = computed(() => props.student.tg_id === authStore.myTgId);
 
 function handleStatusClick() {
-  if (!authStore.isAdmin) return;
+  if (!authStore.isAdmin || props.disabled) return;
   triggerHaptic('select');
   emit('toggleStatus', props.student);
 }
@@ -74,10 +75,11 @@ function handleStatusClick() {
           'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800': student.status === 0,
           'bg-rose-500 text-white font-black shadow-glow-rose': student.status === 1,
           'bg-amber-500 text-white font-black shadow-glow-amber': student.status === 2,
-          'cursor-pointer active:scale-90 hover:brightness-105': authStore.isAdmin,
-          'cursor-default opacity-80': !authStore.isAdmin,
+          'cursor-pointer active:scale-90 hover:brightness-105': authStore.isAdmin && !props.disabled,
+          'cursor-not-allowed opacity-40': props.disabled,
+          'cursor-default opacity-80': !authStore.isAdmin && !props.disabled,
         }"
-        :disabled="!authStore.isAdmin"
+        :disabled="!authStore.isAdmin || props.disabled"
         @click="handleStatusClick"
       >
         <Check v-if="student.status === 0" class="w-4 h-4 stroke-[3]" />

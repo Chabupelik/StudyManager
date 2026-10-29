@@ -52,3 +52,5 @@ class Lesson(Base):
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_homeroom: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    is_hidden: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)

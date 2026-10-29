@@ -67,6 +67,8 @@ async def get_base_lessons_for_date(
             "name": l.name,
             "teacher": l.teacher,
             "classroom": l.classroom,
+            "is_homeroom": bool(l.is_homeroom),
+            "is_hidden": bool(l.is_hidden),
         }
         for l in lessons
     ]
@@ -97,11 +99,18 @@ async def build_schedule(
     for lesson in base_lessons:
         t = lesson["time"]
         processed_times.add(t)
+        # Hidden lessons should not be displayed on the frontend schedule
+        if lesson.get("is_hidden"):
+            continue
         ovr = override_map.get(t)
+        effective_name = ovr.new_name if ovr and ovr.new_name else lesson["name"]
+        is_hr = (
+            bool(lesson.get("is_homeroom")) or "классный час" in effective_name.lower()
+        )
         temp.append(
             {
                 "time": t,
-                "name": (ovr.new_name if ovr and ovr.new_name else lesson["name"]),
+                "name": effective_name,
                 "teacher": (
                     ovr.new_teacher
                     if ovr and ovr.new_teacher
@@ -110,19 +119,23 @@ async def build_schedule(
                 "classroom": lesson.get("classroom"),
                 "canceled": bool(ovr and ovr.is_canceled),
                 "absent_count": absent_counts.get(t, 0),
+                "is_homeroom": is_hr,
             }
         )
 
     for t, ovr in override_map.items():
         if t not in processed_times:
+            effective_name = ovr.new_name or "Без названия"
+            is_hr = "классный час" in effective_name.lower()
             temp.append(
                 {
                     "time": t,
-                    "name": ovr.new_name or "Без названия",
+                    "name": effective_name,
                     "teacher": ovr.new_teacher or "Не назначен",
                     "classroom": None,
                     "canceled": bool(ovr.is_canceled),
                     "absent_count": absent_counts.get(t, 0),
+                    "is_homeroom": is_hr,
                 }
             )
 
@@ -357,6 +370,8 @@ class ScheduleService:
                                 if l.valid_until
                                 else None
                             ),
+                            "is_homeroom": l.is_homeroom,
+                            "is_hidden": l.is_hidden,
                         }
                         for l in lessons_by_day[day]
                     ],
@@ -407,6 +422,8 @@ class ScheduleService:
             end_time=end_time_obj,
             valid_from=valid_from_obj,
             valid_until=valid_until_obj,
+            is_homeroom=body.is_homeroom,
+            is_hidden=body.is_hidden,
         )
         await self.session.commit()
         await self._invalidate_base_schedule(group_id)

@@ -23,6 +23,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const lessonName = ref('');
   const lessonTeacher = ref('');
   const isCanceled = ref(false);
+  const isHomeroom = ref(false);
 
   // Modal state
   const pendingStudent = ref<StudentAttendance | null>(null);
@@ -45,11 +46,12 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const countNb = computed(() => students.value.filter((s) => s.status === 1).length);
   const countUv = computed(() => students.value.filter((s) => s.status === 2).length);
 
-  async function loadDetails(time: string, name: string, teacher: string, canceled: boolean) {
+  async function loadDetails(time: string, name: string, teacher: string, canceled: boolean, homeroom = false) {
     lessonTime.value = time;
     lessonName.value = name;
     lessonTeacher.value = teacher;
     isCanceled.value = canceled;
+    isHomeroom.value = homeroom || name.toLowerCase().includes('классный час');
     filter.value = 'all';
 
     loading.value = true;
@@ -58,6 +60,9 @@ export const useAttendanceStore = defineStore('attendance', () => {
         `/api/lesson_details?date=${scheduleStore.dateKey}&time=${time}&group_id=${scheduleStore.selectedGroupId}`
       );
       students.value = res.students || [];
+      if (res.is_homeroom !== undefined) {
+        isHomeroom.value = res.is_homeroom;
+      }
     } catch (e) {
       console.error('Failed to load lesson details', e);
     } finally {
@@ -71,12 +76,17 @@ export const useAttendanceStore = defineStore('attendance', () => {
         `/api/lesson_details?date=${scheduleStore.dateKey}&time=${lessonTime.value}&group_id=${scheduleStore.selectedGroupId}`
       );
       students.value = res.students || [];
+      if (res.is_homeroom !== undefined) {
+        isHomeroom.value = res.is_homeroom;
+      }
     } catch (e) {
       console.error('Failed to refresh lesson details', e);
     }
   }
 
   async function updateSingleAttendance(studentId: number, status: number, reason = '') {
+    if (isHomeroom.value) return;
+
     // Optimistic UI update
     const s = students.value.find((item) => item.id === studentId);
     if (s) {
@@ -97,7 +107,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     } catch (e) {
       console.error('Failed to update attendance', e);
       // Reload on error
-      loadDetails(lessonTime.value, lessonName.value, lessonTeacher.value, isCanceled.value);
+      loadDetails(lessonTime.value, lessonName.value, lessonTeacher.value, isCanceled.value, isHomeroom.value);
     }
   }
 
@@ -127,6 +137,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     lessonName,
     lessonTeacher,
     isCanceled,
+    isHomeroom,
     pendingStudent,
     showReasonModal,
     filteredStudents,

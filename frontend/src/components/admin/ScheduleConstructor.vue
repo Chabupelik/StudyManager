@@ -14,6 +14,8 @@ interface BaseLessonItem {
   end_time: string;
   valid_from?: string;
   valid_until?: string;
+  is_homeroom?: number | boolean;
+  is_hidden?: number | boolean;
 }
 
 interface BaseScheduleDay {
@@ -68,12 +70,19 @@ function openAddModal(day_of_week: number) {
     classroom: '',
     start_time: defaultStart,
     end_time: defaultEnd,
+    is_homeroom: 0,
+    is_hidden: 0,
   };
   isModalOpen.value = true;
 }
 
 function openEditModal(day_of_week: number, lesson: BaseLessonItem) {
-  editingLesson.value = { ...lesson, day_of_week };
+  editingLesson.value = {
+    ...lesson,
+    day_of_week,
+    is_homeroom: lesson.is_homeroom ? 1 : 0,
+    is_hidden: lesson.is_hidden ? 1 : 0,
+  };
   isModalOpen.value = true;
 }
 
@@ -98,6 +107,8 @@ async function saveLesson() {
       end_time: editingLesson.value.end_time,
       valid_from: editingLesson.value.valid_from || null,
       valid_until: editingLesson.value.valid_until || null,
+      is_homeroom: editingLesson.value.is_homeroom ? 1 : 0,
+      is_hidden: editingLesson.value.is_hidden ? 1 : 0,
     };
     
     if (editingLesson.value.id) {
@@ -201,7 +212,21 @@ function getSemesterName(valid_from?: string): string {
                   {{ index + 1 }}
                 </div>
                 <div>
-                  <div class="text-sm font-bold text-app-text">{{ lesson.name }}</div>
+                  <div class="text-sm font-bold text-app-text flex items-center gap-2 flex-wrap">
+                    <span>{{ lesson.name }}</span>
+                    <span
+                      v-if="lesson.is_homeroom"
+                      class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold border border-purple-500/30"
+                    >
+                      Классный час
+                    </span>
+                    <span
+                      v-if="lesson.is_hidden"
+                      class="text-[10px] px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-500 dark:text-slate-400 font-bold border border-slate-500/30"
+                    >
+                      Скрыта
+                    </span>
+                  </div>
                   <div class="flex items-center gap-2 text-xs text-app-muted mt-0.5">
                     <span class="flex items-center gap-1">
                       <Clock class="w-3.5 h-3.5" />
@@ -304,6 +329,36 @@ function getSemesterName(valid_from?: string): string {
               <label class="text-xs font-bold text-app-muted uppercase">Действует по дату (опц.)</label>
               <input type="date" v-model="editingLesson.valid_until" class="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-app-accent rounded-xl px-3 py-2 text-sm text-app-text outline-none transition-colors" />
             </div>
+
+            <!-- Homeroom Toggle -->
+            <label class="col-span-2 flex items-center justify-between p-3 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-app-border cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <div class="flex flex-col pr-2">
+                <span class="text-xs font-bold text-app-text">Классный час</span>
+                <span class="text-[10px] text-app-muted">Отображается в расписании, но без отметок посещаемости и не учитывается в часах</span>
+              </div>
+              <input
+                v-model="editingLesson.is_homeroom"
+                :true-value="1"
+                :false-value="0"
+                type="checkbox"
+                class="w-4 h-4 rounded text-app-accent focus:ring-app-accent bg-app-card border-app-border cursor-pointer shrink-0"
+              />
+            </label>
+
+            <!-- Hidden Toggle -->
+            <label class="col-span-2 flex items-center justify-between p-3 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-app-border cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <div class="flex flex-col pr-2">
+                <span class="text-xs font-bold text-app-text">Не отображать в расписании</span>
+                <span class="text-[10px] text-app-muted">Скрывает пару на фронте, сохраняя её для расчетов, сдвигов и нумерации</span>
+              </div>
+              <input
+                v-model="editingLesson.is_hidden"
+                :true-value="1"
+                :false-value="0"
+                type="checkbox"
+                class="w-4 h-4 rounded text-app-accent focus:ring-app-accent bg-app-card border-app-border cursor-pointer shrink-0"
+              />
+            </label>
           </div>
         </div>
         
