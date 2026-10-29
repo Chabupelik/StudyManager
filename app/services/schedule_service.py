@@ -100,7 +100,7 @@ def compute_lesson_number(
         for hr_t in homeroom_times
         if int(hr_t.split(":")[0]) * 60 + int(hr_t.split(":")[1]) < t
     )
-    effective_t = t + 30 * homerooms_before
+    effective_t = t - 60 * homerooms_before
     if effective_t < 440:  # before ~07:20
         return None
     return max(1, round((effective_t - 480) / 95) + 1)
