@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import os
-import re
 import time
 import uuid
 from contextlib import suppress
@@ -20,8 +19,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     InputMediaPhoto,
     Message,
 )
@@ -87,13 +84,10 @@ async def load_chat_maps_from_db() -> None:
         new_tg_map = {}
         new_vk_map = {}
         new_admin_users = set()
-        new_excluded_ids = set()
 
         member_rows = await pool.fetch("SELECT user_id, role FROM group_members")
         for m in member_rows:
             if m["role"] in ("headman", "deputy", "curator"):
-                new_excluded_ids.add(m["user_id"])
-                new_admin_users.add(m["user_id"])  # We'll map this to tg_user_id below
                 new_admin_users.add(m["user_id"])  # We'll map this to tg_user_id below
 
         final_admin_users = set()
@@ -112,9 +106,6 @@ async def load_chat_maps_from_db() -> None:
 
         ADMIN_USERS.clear()
         ADMIN_USERS.update(final_admin_users)
-
-        EXCLUDED_IDS.clear()
-        EXCLUDED_IDS.update(new_excluded_ids)
 
     except Exception as exc:
         logging.warning("Failed to fetch users from db: %s", exc)
@@ -164,13 +155,9 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 ADMIN_USERS = set()
-EXCLUDED_IDS = set()
 
 TG_NAME_MAP = {}
 VK_NAME_MAP = {}
-
-
-UNDO_STORAGE = {}
 
 
 async def notify_backend_duties():
@@ -1157,27 +1144,6 @@ async def handle_clear_media(message: Message):
     asyncio.create_task(delete_later([message, sent_ok], 5))
 
 
-def parse_date_input(date_str: str) -> str | None:
-    date_str = date_str.strip()
-    current_year = datetime.now(MSK).year
-    patterns = [
-        ("%Y-%m-%d", False),
-        ("%d.%m.%Y", False),
-        ("%d.%m.%y", False),
-        ("%d.%m", True),
-        ("%d/%m/%Y", False),
-    ]
-    for fmt, add_year in patterns:
-        try:
-            dt = datetime.strptime(date_str, fmt)
-            if add_year:
-                dt = dt.replace(year=current_year)
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return None
-
-
 async def delete_later(messages: list[Message], delay: int = 60):
     await asyncio.sleep(delay)
     for msg in messages:
@@ -1220,7 +1186,7 @@ async def handle_start(message: Message):
         return
 
     await message.answer(
-        "👋 <b>Привет!</b> Я бот для управления графиком дежурств.\nНажми /help чтобы узнать доступные команды."
+        "👋 <b>Привет!</b> Я бот StudyManager.\nНажми /help чтобы узнать доступные команды."
     )
 
 
@@ -1228,77 +1194,12 @@ async def handle_start(message: Message):
 async def help_command(message: Message):
     text = (
         "📖 <b>СПРАВОЧНАЯ ИНФОРМАЦИЯ</b>\n━━━━━━━━━━━━━━━━━━\n\n"
-        "🟢 <b>ДОСТУПНО ВСЕМ:</b>\n"
-        "🔹 <code>/list</code> — Посмотреть график дежурств.\n"
-        "🟠 <b>ТОЛЬКО ДЛЯ АДМИНИСТРАТОРОВ:</b>\n"
-        "🔸 <code>/dury [дата]</code> — Назначить дежурных.\n"
+        "🟠 <b>ДЛЯ АДМИНИСТРАТОРОВ:</b>\n"
+        "🔸 <code>/vk_names</code> — Проверить сопоставление пользователей с VK.\n"
+        "🔸 <code>/clear_media</code> — Очистить медиа.\n"
     )
     sent_msg = await message.answer(text, disable_notification=True)
     asyncio.create_task(delete_later([message, sent_msg], delay=60))
-
-
-@dp.message(Command("list"))
-async def handle_list(message: Message):
-    pool = await get_db_pool()
-    rows = await pool.fetch("SELECT user_id, date FROM duties WHERE group_id = 2")
-    db_data = {r["user_id"]: r["date"] for r in rows}
-
-    lines = message.text.split("\n")
-    excluded_names = [l.strip().lower() for l in lines[1:] if l.strip()]
-
-    duty_list = []
-    student_rows = await pool.fetch(
-        "SELECT u.id, u.full_name FROM users u "
-        "JOIN group_members gm ON u.id = gm.user_id "
-        "WHERE gm.role = 'student'"
-    )
-    for s in student_rows:
-        if s["id"] in EXCLUDED_IDS:
-            continue
-        if any(ex in s["full_name"].lower() for ex in excluded_names):
-            continue
-        duty_list.append({"name": s["full_name"], "date": db_data.get(s["id"])})
-
-    duty_list.sort(key=lambda x: (x["date"] is None, x["date"]))
-
-    target_count = 3
-    current_count = 0
-    red_date = None
-    blue_dates = set()
-    dated_people = [x for x in duty_list if x["date"]]
-
-    if dated_people:
-        red_date = dated_people[0]["date"]
-        for p in dated_people:
-            d = p["date"]
-            if d == red_date:
-                current_count += 1
-            else:
-                if current_count < target_count:
-                    blue_dates.add(d)
-                    current_count += 1
-                else:
-                    if d in blue_dates:
-                        current_count += 1
-                    else:
-                        break
-
-    text = "📋 <b>ГРАФИК ДЕЖУРСТВ</b>\n━━━━━━━━━━━━━━━━━━\n"
-    for entry in duty_list:
-        mark = "⚪"
-        d_val = entry["date"]
-        if d_val:
-            dt_str = f"<code>{datetime.strptime(d_val, '%Y-%m-%d').strftime('%d.%m.%Y')}</code>"
-            if d_val == red_date:
-                mark = "🔴"
-            elif d_val in blue_dates:
-                mark = "🔵"
-        else:
-            dt_str = "<code>   —      </code>"
-        text += f"{mark} <b>{html.escape(entry['name'])}</b>\n      └ {dt_str}\n"
-
-    sent = await message.answer(text, disable_notification=True)
-    asyncio.create_task(delete_later([message, sent], 60))
 
 
 @dp.message(Command("vk_names"))
@@ -1359,138 +1260,6 @@ async def handle_vk_names(message: Message):
     except Exception as e:
         logging.error(f"Ошибка проверки имен: {e}")
         await sent_status.edit_text(f"❌ Ошибка API: {e}")
-
-
-@dp.message(Command("dury"))
-async def handle_dury(message: Message):
-    if message.from_user.id not in ADMIN_USERS:
-        return
-
-    lines = message.text.split("\n")
-    cmd_parts = lines[0].split()
-    target_date = datetime.now(MSK).strftime("%Y-%m-%d")
-
-    if len(cmd_parts) > 1:
-        parsed = parse_date_input(cmd_parts[1])
-        if parsed:
-            target_date = parsed
-        else:
-            return await message.answer("⚠️ Неверный формат даты.")
-
-    display_date = datetime.strptime(target_date, "%Y-%m-%d").strftime("%d.%m.%Y")
-    names_input = lines[1:]
-
-    updated_ids = []
-    not_found = []
-    undo_list = []
-
-    pool = await get_db_pool()
-    rows = await pool.fetch("SELECT user_id, date FROM duties WHERE group_id = 2")
-    current_state = {r["user_id"]: r["date"] for r in rows}
-
-    student_rows = await pool.fetch(
-        "SELECT u.id, u.full_name as name FROM users u "
-        "JOIN group_members gm ON u.id = gm.user_id "
-        "WHERE gm.role = 'student'"
-    )
-    students_list = [dict(r) for r in student_rows]
-
-    for line in names_input:
-        search = line.strip().lower()
-        if not search:
-            continue
-        found_student = next(
-            (s for s in students_list if search in s["name"].lower()), None
-        )
-
-        if found_student:
-            s_id = found_student["id"]
-            undo_list.append({"id": s_id, "old_date": current_state.get(s_id)})
-            await pool.execute(
-                """
-                INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
-                ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
-                """,
-                s_id,
-                target_date,
-            )
-            updated_ids.append(found_student["name"])
-        else:
-            not_found.append(line.strip())
-
-    if not updated_ids:
-        return await message.answer(
-            f"🤷‍♂️ Никого не нашел.\nНе найдены: {', '.join(not_found)}"
-        )
-
-    # Уведомляем веб-клиентов
-    asyncio.create_task(notify_backend_duties())
-
-    undo_id = str(uuid.uuid4())[:8]
-    UNDO_STORAGE[undo_id] = undo_list
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="↩️ Отменить", callback_data=f"undo_dury:{undo_id}"
-                )
-            ]
-        ]
-    )
-
-    resp = f"🔔 <b>Назначены дежурные!</b>\n📅 Дата: <code>{display_date}</code>\n━━━━━━━━━━━━━━━━━━\n"
-    for name in updated_ids:
-        resp += f"✅ <b>{html.escape(name)}</b>\n"
-    if not_found:
-        resp += "\n⚠️ <b>Не найдены:</b>\n" + "\n".join(
-            [html.escape(n) for n in not_found]
-        )
-    resp += f"\n\n👤 <b>Назначил:</b> {message.from_user.mention_html()}"
-
-    await message.answer(resp, reply_markup=kb)
-    clean_vk_text = re.sub(r"<[^>]+>", "", resp)
-    target_vk_peer = REVERSE_CHAT_MAP.get(message.chat.id)
-    if target_vk_peer:
-        await vk_bridge.send_message(clean_vk_text, peer_id=target_vk_peer)
-
-
-@dp.callback_query(F.data.startswith("undo_dury:"))
-async def process_undo(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_USERS:
-        return await callback.answer("⛔️ Нет прав", show_alert=True)
-
-    undo_id = callback.data.split(":")[1]
-    undo_data = UNDO_STORAGE.get(undo_id)
-    if not undo_data:
-        return await callback.answer("⏳ Время истекло", show_alert=True)
-
-    pool = await get_db_pool()
-    for item in undo_data:
-        if item["old_date"] is None:
-            await pool.execute(
-                "DELETE FROM duties WHERE user_id = $1 AND group_id = 2", item["id"]
-            )
-        else:
-            await pool.execute(
-                """
-                INSERT INTO duties (group_id, user_id, date) VALUES (2, $1, $2)
-                ON CONFLICT (group_id, user_id) DO UPDATE SET date = $2
-                """,
-                item["id"],
-                item["old_date"],
-            )
-
-    del UNDO_STORAGE[undo_id]
-    await callback.message.edit_text(
-        "🔄 <b>ИЗМЕНЕНИЯ ОТМЕНЕНЫ!</b>\nВозвращены старые даты.", reply_markup=None
-    )
-    await callback.answer("Готово")
-    target_vk_peer = REVERSE_CHAT_MAP.get(callback.message.chat.id)
-    if target_vk_peer:
-        await vk_bridge.send_message(
-            "🔄 Назначение дежурных отменено.", peer_id=target_vk_peer
-        )
-    asyncio.create_task(notify_backend_duties())
 
 
 @dp.callback_query(F.data.startswith("web_undo:"))
