@@ -15,3 +15,12 @@ repos:
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy app tgbot
+        language: system
+        types: [python]
+        pass_filenames: false

@@ -5,7 +5,6 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
 
-
 ignore = [
     "E501",    # Игнорировать длину строк (Line too long)
     "E741",    # Разрешить короткие имена переменных (l, I)
@@ -16,6 +15,31 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tgbot"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_ignores = false
+disable_error_code = [
+    "import-untyped",
+    "union-attr",
+    "arg-type",
+    "prop-decorator",
+    "var-annotated",
+    "misc",
+    "operator",
+    "assignment",
+    "return-value",
+    "dict-item",
+    "index",
+    "attr-defined",
+    "call-overload",
+    "type-var",
+]
 
 [[tool.mypy.overrides]]
 module = ["tgbot.*", "migrations.*"]
