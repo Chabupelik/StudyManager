@@ -53,13 +53,13 @@ function getEndTime(startTime: string, isHomeroom?: boolean): string {
     @click="emit('click')"
   >
     <!-- Time Badge Column -->
-    <div class="flex flex-col items-center gap-1.5 self-start mt-0.5 w-[64px] flex-shrink-0">
+    <div class="flex flex-col items-center gap-1.5 self-start mt-0.5 w-[68px] flex-shrink-0">
       <div
         class="flex flex-col items-center justify-center px-1.5 py-1.5 w-full rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-extrabold text-xs border border-blue-200/80 dark:border-blue-800/60 shadow-sm"
       >
         <span
           v-if="pairNumber != null"
-          class="text-[9px] font-bold opacity-60 tracking-widest uppercase mb-0.5"
+          class="text-[8.5px] font-bold opacity-70 tracking-tight uppercase mb-0.5 whitespace-nowrap text-center"
         >{{ pairNumber }}-я пара</span>
         <span class="tracking-tight">{{ lesson.time }}</span>
         <div class="w-full h-px bg-blue-200/60 dark:bg-blue-800/60 my-0.5"></div>
