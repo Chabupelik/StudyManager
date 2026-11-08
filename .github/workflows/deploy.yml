@@ -8,7 +8,13 @@ jobs:
   lint-python:
     name: "Python - ruff + mypy"
     runs-on: ubuntu-latest
+    outputs:
+      start_time: ${{ steps.timer.outputs.start_time }}
     steps:
+      - name: Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Check out code
         uses: actions/checkout@v4
 
@@ -99,7 +105,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           LINT_STATUS: ${{ needs.lint-python.result }}
           DEPLOY_STATUS: ${{ needs.build-and-deploy.result }}
-          RUN_STARTED_AT: ${{ github.run_started_at }}
+          START_TIME: ${{ needs.lint-python.outputs.start_time }}
         run: |
           REPO_NAME="${REPO_NAME:-${GITHUB_REPOSITORY#*/}}"
           SHORT_SHA="${COMMIT_SHA:0:7}"
@@ -132,7 +138,10 @@ jobs:
             STATUS_TEXT="❌ <b>Пайплайн завершился с ошибкой</b>"
           fi
 
-          START_TS=$(date -d "${RUN_STARTED_AT}" +%s 2>/dev/null || date +%s)
+          START_TS="${START_TIME//[!0-9]/}"
+          if [ -z "$START_TS" ]; then
+            START_TS=$(date +%s)
+          fi
           END_TS=$(date +%s)
           DURATION=$((END_TS - START_TS))
           if [ "$DURATION" -lt 0 ]; then
