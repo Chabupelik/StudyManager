@@ -90,33 +90,79 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TG_NOTIFY_CHAT_ID }}
-          LINT_STATUS: ${{ needs.lint-python.result }}
-          DEPLOY_STATUS: ${{ needs.build-and-deploy.result }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LINT_STATUS: ${{ needs.lint-python.result }}
+          DEPLOY_STATUS: ${{ needs.build-and-deploy.result }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
         run: |
+          REPO_NAME="${REPO_NAME:-${GITHUB_REPOSITORY#*/}}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          COMMIT_URL="${REPO_URL}/commit/${COMMIT_SHA}"
+          CLEAN_MSG=$(echo "${COMMIT_MSG:-manual}" | head -n 1)
+
+          esc() {
+            echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+          }
+
+          fmt_status() {
+            case "$1" in
+              success) echo "✅ Успешно" ;;
+              failure) echo "❌ Ошибка" ;;
+              cancelled) echo "⚠️ Отменено" ;;
+              skipped) echo "⏭️ Пропущено" ;;
+              *) echo "$1" ;;
+            esac
+          }
+
           if [ "$DEPLOY_STATUS" = "success" ]; then
-            ICON="✅"
-            STATUS_TEXT="Задеплоено успешно"
+            STATUS_TEXT="✅ <b>Задеплоено успешно</b>"
           elif [ "$LINT_STATUS" = "failure" ]; then
-            ICON="❌"
-            STATUS_TEXT="Упал линтер / mypy"
+            STATUS_TEXT="❌ <b>Упал линтер / mypy</b>"
+          elif [ "$DEPLOY_STATUS" = "failure" ]; then
+            STATUS_TEXT="❌ <b>Деплой / билд упал</b>"
+          elif [ "$LINT_STATUS" = "cancelled" ] || [ "$DEPLOY_STATUS" = "cancelled" ]; then
+            STATUS_TEXT="⚠️ <b>Пайплайн отменён</b>"
           else
-            ICON="❌"
-            STATUS_TEXT="Деплой / билд упал"
+            STATUS_TEXT="❌ <b>Пайплайн завершился с ошибкой</b>"
           fi
 
-          SHORT_SHA="${COMMIT_SHA:0:7}"
-          esc() { echo "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+          START_TS=$(date -d "${RUN_STARTED_AT}" +%s 2>/dev/null || date +%s)
+          END_TS=$(date +%s)
+          DURATION=$((END_TS - START_TS))
+          if [ "$DURATION" -lt 0 ]; then
+            DURATION=0
+          fi
+          MIN=$((DURATION / 60))
+          SEC=$((DURATION % 60))
+          if [ "$MIN" -gt 0 ]; then
+            DURATION_TEXT="${MIN}м ${SEC}с"
+          else
+            DURATION_TEXT="${SEC}с"
+          fi
+          START_FMT=$(TZ="Europe/Moscow" date -d "@${START_TS}" +"%H:%M:%S")
+          END_FMT=$(TZ="Europe/Moscow" date -d "@${END_TS}" +"%H:%M:%S")
 
-          MSG="${ICON} <b>$(esc "$STATUS_TEXT")</b>
+          LINT_TEXT=$(fmt_status "$LINT_STATUS")
+          DEPLOY_TEXT=$(fmt_status "$DEPLOY_STATUS")
 
-          📦 <b>Коммит:</b> <code>${SHORT_SHA}</code>
-          💬 $(esc "$COMMIT_MSG")
-          👤 $(esc "$ACTOR")
-          🔗 <a href=\"${RUN_URL}\">Открыть в Actions</a>"
+          NL=$'\n'
+          MSG="🚀 <b><a href=\"${REPO_URL}\">$(esc "$REPO_NAME")</a> | CI/CD</b>${NL}"
+          MSG="${MSG}Статус: ${STATUS_TEXT}${NL}${NL}"
+          MSG="${MSG}🌿 <b>Ветка:</b> <code>$(esc "$BRANCH")</code>${NL}"
+          MSG="${MSG}📦 <b>Коммит:</b> <a href=\"${COMMIT_URL}\"><code>${SHORT_SHA}</code></a>${NL}"
+          MSG="${MSG}💬 <b>Инфо:</b> $(esc "$CLEAN_MSG")${NL}"
+          MSG="${MSG}👤 <b>Автор:</b> $(esc "$ACTOR")${NL}${NL}"
+          MSG="${MSG}📊 <b>Этапы:</b>${NL}"
+          MSG="${MSG}• Линтер (ruff / mypy): ${LINT_TEXT}${NL}"
+          MSG="${MSG}• Сборка и деплой: ${DEPLOY_TEXT}${NL}${NL}"
+          MSG="${MSG}⏱ <b>Время:</b> ${START_FMT} → ${END_FMT} МСК (${DURATION_TEXT})${NL}"
+          MSG="${MSG}🔗 <a href=\"${RUN_URL}\">Открыть в GitHub Actions</a>"
 
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
